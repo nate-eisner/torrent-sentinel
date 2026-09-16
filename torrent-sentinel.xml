@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/nate-eisner/torrent-sentinel/issues</Support>
   <Project>https://github.com/nate-eisner/torrent-sentinel</Project>
-  <Overview>Torrent Sentinel - Automated VPN Rotation &amp; Torrent Health Monitor with AI Diagnostics (Ollama).</Overview>
+  <Overview>Torrent Sentinel - Automated VPN Rotation &amp; Torrent Health Monitor with AI Diagnostics (Ollama) and Web Dashboard.</Overview>
   <Category>Downloaders: Tools: Network:VPN</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/nate-eisner/torrent-sentinel/main/torrent-sentinel.xml</TemplateURL>
@@ -20,7 +20,7 @@
   <DateInstalled></DateInstalled>
   <DonateText></DonateText>
   <DonateLink></DonateLink>
-  <Description>Torrent Sentinel monitors your Transmission torrent client and automatically rotates VPN profiles when stalled or slow, leveraging local LLM (Ollama) diagnostics to verify network health and avoid flapping.</Description>
+  <Description>Torrent Sentinel monitors your Transmission torrent client and automatically rotates VPN profiles when stalled or slow, leveraging local LLM (Ollama) diagnostics to verify network health and avoid flapping. Includes a real-time Web Dashboard for monitoring and manual control.</Description>
   <Networking>
     <Mode>bridge</Mode>
     <Publish>
