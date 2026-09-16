@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     iptables \
     curl \
+    resolvconf \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first to leverage Docker layer cache
