@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
 
+    # Web Dashboard / API Server
+    WEB_HOST: str = "0.0.0.0"
+    WEB_PORT: int = 8000
+
     model_config = SettingsConfigDict(env_prefix="SENTINEL_", case_sensitive=False)
 
 settings = Settings()

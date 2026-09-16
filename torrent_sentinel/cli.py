@@ -18,19 +18,35 @@ app = typer.Typer(help="Torrent Sentinel CLI")
 console = Console()
 
 @app.command()
-def run():
-    """Start the Torrent Sentinel daemon."""
+def run(
+    host: Optional[str] = typer.Option(None, help="Host to bind Web UI"),
+    port: Optional[int] = typer.Option(None, help="Port to bind Web UI"),
+    headless: bool = typer.Option(False, "--headless", help="Run daemon only without Web UI")
+):
+    """Start Torrent Sentinel (Web UI & background daemon)."""
     setup_logging()
     logger = logging.getLogger("torrent_sentinel.cli")
-    logger.info("Initializing Torrent Sentinel daemon via CLI...")
 
-    adapter = get_vpn_adapter()
-    daemon = SentinelDaemon(adapter)
-    
-    try:
-        asyncio.run(daemon.run())
-    except KeyboardInterrupt:
-        logger.info("Daemon stopped by user (SIGINT/KeyboardInterrupt).")
+    if headless:
+        logger.info("Initializing Torrent Sentinel in HEADLESS mode (daemon only)...")
+        adapter = get_vpn_adapter()
+        daemon = SentinelDaemon(adapter)
+        try:
+            asyncio.run(daemon.run())
+        except KeyboardInterrupt:
+            logger.info("Daemon stopped by user (SIGINT/KeyboardInterrupt).")
+    else:
+        bind_host = host or settings.WEB_HOST
+        bind_port = port or settings.WEB_PORT
+        logger.info("Starting Torrent Sentinel Web UI & Daemon on http://%s:%d ...", bind_host, bind_port)
+        import uvicorn
+        uvicorn_log_level = settings.LOG_LEVEL.lower()
+        uvicorn.run(
+            "torrent_sentinel.api.router:app",
+            host=bind_host,
+            port=bind_port,
+            log_level=uvicorn_log_level
+        )
 
 @app.command()
 def history():

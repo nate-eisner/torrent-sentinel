@@ -151,8 +151,12 @@ async def trigger_rotation(background_tasks: BackgroundTasks):
     return {"message": "Rotation triggered"}
 
 # Serve the frontend static files
-app.mount("/static", StaticFiles(directory="torrent_sentinel/api/static"), name="static")
+import os
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+INDEX_FILE = os.path.join(STATIC_DIR, "index.html")
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 async def serve_index():
-    return FileResponse("torrent_sentinel/api/static/index.html")
+    return FileResponse(INDEX_FILE)
