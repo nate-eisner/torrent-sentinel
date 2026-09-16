@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # VPN Provider (Unraid WireGuard)
     VPN_TYPE: str = "unraid_wireguard"  # unraid_wireguard, mock, command
     VPN_INTERFACE: str = "wg1"
-    VPN_CONFIGS_DIR: str = "/mnt/user/appdata/torrent-sentinel/vpn_configs/"
-    VPN_ACTIVE_CONFIG: str = "/mnt/user/appdata/torrent-sentinel/vpn_configs/active.conf"
+    VPN_CONFIGS_DIR: str = "/app/vpn_configs/"
+    VPN_ACTIVE_CONFIG: str = "/app/vpn_configs/active.conf"
 
     # Health Thresholds
     MIN_SEEDS: int = 2
