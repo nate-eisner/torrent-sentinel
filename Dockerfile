@@ -34,7 +34,7 @@ RUN mkdir -p /app/logs /app/data /app/vpn_configs
 EXPOSE 8000
 
 # Set the entrypoint to our CLI
-ENTRYPOINT ["poetry", "run", "torrent-sentinel"]
+ENTRYPOINT ["torrent-sentinel"]
 
 # Default command (can be overridden)
 CMD ["run"]
