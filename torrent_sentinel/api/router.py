@@ -69,7 +69,7 @@ async def get_torrents():
             rate_upload=t.rate_upload,
             peers_connected=t.peers_connected,
             peers_sending_to_us=t.peers_sending_to_us,
-            error=t.error
+            error=(t.error_string or f"Error {t.error}") if (t.error is not None and t.error != 0 and str(t.error) != "0") else None
         ) for t in torrents
     ]
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 
 class TorrentInfo(BaseModel):
@@ -11,7 +11,7 @@ class TorrentInfo(BaseModel):
     peers_connected: int = Field(alias="peersConnected")
     peers_sending_to_us: int = Field(alias="peersSendingToUs")
     eta: Optional[int] = None
-    error: Optional[str] = None
+    error: Optional[Union[int, str]] = None
     error_string: Optional[str] = Field(None, alias="errorString")
 
 class TrackerInfo(BaseModel):

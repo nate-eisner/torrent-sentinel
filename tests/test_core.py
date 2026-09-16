@@ -64,3 +64,35 @@ async def test_storage_scoring(mock_storage):
     await mock_storage.update_score("us-east", 15)
     top = await mock_storage.get_top_locations(limit=1)
     assert "us-east" in top
+
+def test_torrent_info_validation():
+    # Test with Transmission int error = 0 (no error)
+    t1 = TorrentInfo(
+        id="1",
+        name="Test Torrent 1",
+        status="downloading",
+        rateDownload=1024.0,
+        rateUpload=512.0,
+        peersConnected=10,
+        peersSendingToUs=5,
+        error=0,
+        errorString=""
+    )
+    assert t1.error == 0
+    assert t1.rate_download == 1024.0
+
+    # Test with Transmission int error = 2 (tracker error)
+    t2 = TorrentInfo(
+        id="2",
+        name="Test Torrent 2",
+        status="stalled",
+        rateDownload=0.0,
+        rateUpload=0.0,
+        peersConnected=0,
+        peersSendingToUs=0,
+        error=2,
+        errorString="Connection timed out"
+    )
+    assert t2.error == 2
+    assert t2.error_string == "Connection timed out"
+

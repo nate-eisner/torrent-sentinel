@@ -22,7 +22,15 @@ class TransmissionClient:
             
             payload = {
                 "method": "torrent-get",
-                "arguments": {"fields": ["id", "name", "status", "percentDone", "downloadSpeed", "uploadSpeed", "peersConnected", "peersSendingToUs", "eta", "error", "errorString"]}
+                "arguments": {
+                    "fields": [
+                        "id", "name", "status", "percentDone",
+                        "rateDownload", "rateUpload",
+                        "downloadSpeed", "uploadSpeed",
+                        "peersConnected", "peersSendingToUs",
+                        "eta", "error", "errorString"
+                    ]
+                }
             }
             
             response = await client.post(self.base_url, json=payload, headers=headers)
@@ -30,13 +38,13 @@ class TransmissionClient:
             data = response.json()
             
             torrents = []
-            for t in data["arguments"]["torrents"]:
+            for t in data.get("arguments", {}).get("torrents", []):
                 torrents.append(TorrentInfo(
                     id=str(t["id"]),
-                    name=t["name"],
-                    status=str(t["status"]),
-                    rateDownload=float(t.get("downloadSpeed", 0)),
-                    rateUpload=float(t.get("uploadSpeed", 0)),
+                    name=t.get("name", "Unknown"),
+                    status=str(t.get("status", "")),
+                    rateDownload=float(t.get("rateDownload", t.get("downloadSpeed", 0))),
+                    rateUpload=float(t.get("rateUpload", t.get("uploadSpeed", 0))),
                     peersConnected=int(t.get("peersConnected", 0)),
                     peersSendingToUs=int(t.get("peersSendingToUs", 0)),
                     eta=t.get("eta"),

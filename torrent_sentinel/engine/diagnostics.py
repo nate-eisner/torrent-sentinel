@@ -22,7 +22,7 @@ class Diagnostics:
                 "rate_download": t.rate_download
             }
             for t in torrents 
-            if (t.error or t.error_string) or (t.rate_download < settings.MIN_DOWNLOAD_RATE_KBPS and t.peers_connected < settings.MIN_SEEDS)
+            if ((t.error is not None and t.error != 0 and str(t.error) != "0") or bool(t.error_string)) or (t.rate_download < settings.MIN_DOWNLOAD_RATE_KBPS and t.peers_connected < settings.MIN_SEEDS)
         ]
 
         if not stalled_torrents:
