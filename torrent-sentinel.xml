@@ -1,0 +1,134 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>torrent-sentinel</Name>
+  <Repository>ghcr.io/nate-eisner/torrent-sentinel:latest</Repository>
+  <Registry>https://ghcr.io/nate-eisner/torrent-sentinel</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/nate-eisner/torrent-sentinel/issues</Support>
+  <Project>https://github.com/nate-eisner/torrent-sentinel</Project>
+  <Overview>Torrent Sentinel - Automated VPN Rotation &amp; Torrent Health Monitor with AI Diagnostics (Ollama).</Overview>
+  <Category>Downloaders: Tools: Network:VPN</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/nate-eisner/torrent-sentinel/main/torrent-sentinel.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/walkxcode/dashboard-icons/main/png/transmission.png</Icon>
+  <ExtraParams>--cap-add=NET_ADMIN</ExtraParams>
+  <PostArgs></PostArgs>
+  <CPUset></CPUset>
+  <DateInstalled></DateInstalled>
+  <DonateText></DonateText>
+  <DonateLink></DonateLink>
+  <Description>Torrent Sentinel monitors your Transmission torrent client and automatically rotates VPN profiles when stalled or slow, leveraging local LLM (Ollama) diagnostics to verify network health and avoid flapping.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8000</HostPort>
+        <ContainerPort>8000</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/torrent-sentinel/data</HostDir>
+      <ContainerDir>/app/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+    <Volume>
+      <HostDir>/mnt/user/appdata/torrent-sentinel/vpn_configs</HostDir>
+      <ContainerDir>/app/vpn_configs</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value>192.168.0.X</Value>
+      <Name>SENTINEL_TRANSMISSION_HOST</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>9091</Value>
+      <Name>SENTINEL_TRANSMISSION_PORT</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/transmission/rpc</Value>
+      <Name>SENTINEL_TRANSMISSION_RPC_PATH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_TRANSMISSION_AUTH</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>true</Value>
+      <Name>SENTINEL_OLLAMA_ENABLED</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>http://192.168.0.10:11434</Value>
+      <Name>SENTINEL_OLLAMA_BASE_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>gemma4:26b</Value>
+      <Name>SENTINEL_OLLAMA_MODEL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>unraid_wireguard</Value>
+      <Name>SENTINEL_VPN_TYPE</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>wg1</Value>
+      <Name>SENTINEL_VPN_INTERFACE</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/app/vpn_configs/</Value>
+      <Name>SENTINEL_VPN_CONFIGS_DIR</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>/app/vpn_configs/active.conf</Value>
+      <Name>SENTINEL_VPN_ACTIVE_CONFIG</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_DISCORD_WEBHOOK_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_TELEGRAM_BOT_TOKEN</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_TELEGRAM_CHAT_ID</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Config Name="WebUI / API Port" Target="8000" Default="8000" Mode="tcp" Description="Port for Torrent Sentinel WebUI and API" Type="Port" Display="always" Required="false" Mask="false">8000</Config>
+  <Config Name="App Data Directory" Target="/app/data" Default="/mnt/user/appdata/torrent-sentinel/data" Mode="rw" Description="Persistent directory for sentinel.db database" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/torrent-sentinel/data</Config>
+  <Config Name="VPN Configs Directory" Target="/app/vpn_configs" Default="/mnt/user/appdata/torrent-sentinel/vpn_configs" Mode="rw" Description="Directory containing WireGuard .conf profiles" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/torrent-sentinel/vpn_configs</Config>
+  <Config Name="Transmission Host" Target="SENTINEL_TRANSMISSION_HOST" Default="192.168.0.X" Mode="" Description="IP address or hostname of Transmission" Type="Variable" Display="always" Required="true" Mask="false">192.168.0.X</Config>
+  <Config Name="Transmission Port" Target="SENTINEL_TRANSMISSION_PORT" Default="9091" Mode="" Description="Transmission RPC Port" Type="Variable" Display="always" Required="true" Mask="false">9091</Config>
+  <Config Name="Transmission RPC Path" Target="SENTINEL_TRANSMISSION_RPC_PATH" Default="/transmission/rpc" Mode="" Description="Transmission RPC Path" Type="Variable" Display="advanced" Required="false" Mask="false">/transmission/rpc</Config>
+  <Config Name="Transmission Auth" Target="SENTINEL_TRANSMISSION_AUTH" Default="" Mode="" Description="Transmission credentials in username:password format (leave empty if disabled)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Ollama Enabled" Target="SENTINEL_OLLAMA_ENABLED" Default="true" Mode="" Description="Enable AI diagnostics via Ollama (true/false)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Ollama Base URL" Target="SENTINEL_OLLAMA_BASE_URL" Default="http://192.168.0.10:11434" Mode="" Description="Ollama API base URL" Type="Variable" Display="always" Required="false" Mask="false">http://192.168.0.10:11434</Config>
+  <Config Name="Ollama Model" Target="SENTINEL_OLLAMA_MODEL" Default="gemma4:26b" Mode="" Description="Ollama model for diagnosis" Type="Variable" Display="always" Required="false" Mask="false">gemma4:26b</Config>
+  <Config Name="VPN Adapter Type" Target="SENTINEL_VPN_TYPE" Default="unraid_wireguard" Mode="" Description="VPN adapter type (unraid_wireguard, mock, or command)" Type="Variable" Display="always" Required="true" Mask="false">unraid_wireguard</Config>
+  <Config Name="VPN Interface" Target="SENTINEL_VPN_INTERFACE" Default="wg1" Mode="" Description="WireGuard interface name on host (e.g. wg1)" Type="Variable" Display="always" Required="false" Mask="false">wg1</Config>
+  <Config Name="Active VPN Config File" Target="SENTINEL_VPN_ACTIVE_CONFIG" Default="/app/vpn_configs/active.conf" Mode="" Description="Path to current active WireGuard configuration" Type="Variable" Display="advanced" Required="false" Mask="false">/app/vpn_configs/active.conf</Config>
+  <Config Name="Discord Webhook URL" Target="SENTINEL_DISCORD_WEBHOOK_URL" Default="" Mode="" Description="Discord webhook URL for alerts and rotation notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Telegram Bot Token" Target="SENTINEL_TELEGRAM_BOT_TOKEN" Default="" Mode="" Description="Telegram Bot API Token" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Telegram Chat ID" Target="SENTINEL_TELEGRAM_CHAT_ID" Default="" Mode="" Description="Telegram Chat ID for notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>
