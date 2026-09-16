@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import List, Optional
 import asyncio
 
@@ -37,7 +39,6 @@ async def get_status():
     except Exception:
         torrents = []
 
-    # Get current location from mock adapter if possible
     current_loc = "Unknown"
     try:
         from torrent_sentinel.vpn.mock import MockVPNAdapter
@@ -87,7 +88,6 @@ async def get_history():
 
 @app.get("/api/scoreboard", response_model=List[ScoreboardEntry])
 async def get_scoreboard():
-    # Placeholder for scoreboard data
     return []
 
 @app.post("/api/rotate")
@@ -96,20 +96,22 @@ async def trigger_rotation(background_tasks: BackgroundTasks):
     if not daemon_instance:
         raise HTTPException(status_code=503, detail="Daemon not running")
     
-    # Trigger rotation via background task to avoid blocking API response
     async def run_rotation():
-        # In a real scenario, we'd fetch the current profile properly
         from torrent_sentinel.vpn.mock import MockVPNAdapter
         adapter = MockVPNAdapter()
         current_profile = await adapter.get_current_profile()
-        
-        # Find a target profile (just pick the first available that isn't current)
         available = await adapter.get_available_locations()
         target = next((p for p in available if p.id != (current_profile.id if current_profile else "")), None)
-        
         if target:
             await daemon_instance.decision_engine.execute_rotation(current_profile, target, "Manual API Trigger")
 
     background_tasks.add_task(run_rotation)
     return {"message": "Rotation triggered"}
+
+# Serve the frontend static files
+app.mount("/static", StaticFiles(directory="torrent_sentinel/api/static"), name="static")
+
+@app.get("/")
+async def serve_index():
+    return FileResponse("torrent_sentinel/api/static/index.html")
 

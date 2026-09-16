@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content de-width, initial-scale=1.0">
+    <title>Torrent Sentinel Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-12 border-b border-slate-800 pb-6">
+            <div>
+                <h1 class="text-4xl font-bold text-blue-400 flex items-center gap-3">
+                    <i data-lucide="shield-check"></i> Torrent Sentinel
+                </h1>
+                <p class de-width="100%" class="text-slate-400 mt-2">Automated VPN Rotation & Health Monitor</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="status-badge" class="px-3 py-1 rounded-full text-sm font-medium bg-slate-800 text-slate-400">
+                    Checking status...
+                </div>
+                <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-semibold transition-all flex items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Rotate VPN
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-2 uppercase tracking-wider">Active Torrents</div>
+                <div id="stat-torrents" class="text-3xl font-bold">0</div>
+            </div>
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-2 uppercase tracking-wider">Current Location</div>
+                <div id="stat-location" class="text-3xl font-bold text-blue-400">--</div>
+            </div>
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-2 uppercase tracking-wider">System Health</div>
+                <div id="stat-health" class="text-3xl font-bold text-green-400">Optimal</div>
+            </div>
+        </div>
+
+        <div class main="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Torrent Table -->
+            <div class="lg:col-span-2 bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg">
+                <div class="p-6 border-b border-slate-700 flex justify-between items-center">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i data-lucide="list" class="text-blue-400"></i> Active Torrents
+                    </h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-900/50 text-slate-400 text-sm uppercase">
+                            <tr>
+                                <th class="px-6 py-4 font-medium">Name</th>
+                                <th class="px-6 py-4 font-medium">Status</th>
+                                <th class="px-6 py-4 font-medium text-right">DL Speed</th>
+                                <th class="px-6 py-4 font-medium text-right">Peers</th>
+                            </tr>
+                        </thead>
+                        <tbody id="torrent-body" class="divide-y divide-slate-700">
+                            <!-- Rows injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- History Sidebar -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-lg">
+                <div class="p-6 border-b border-slate-700">
+                    <h2 class="text-xl font-semibold flex items-center gap-2">
+                        <i data-lucide="history" class="text-blue-400"></i> Rotation History
+                    </h2>
+                </div>
+                <div id="history-list" class="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                    <!-- History items injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        async function fetchData() {
+            try {
+                // 1. Update Status
+                const statusRes = await fetch('/api/status');
+                const status = await statusRes.json();
+                document.getElementById('stat-torrents').innerText = status.active_torrents;
+                document.getElementById('stat-location').innerText = status.current_location || 'Unknown';
+                const badge = document.getElementById('status-badge');
+                badge.innerText = status.daemon_running ? 'Running' : 'Stopped';
+                badge.className = `px-3 py-1 rounded-full text-sm font-medium ${status.daemon_running ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`;
+
+                // 2. Update Torrents
+                const torrentRes = await fetch('/api/torrents');
+                const torrents = await torrentRes.json();
+                const tbody = document.getElementById('torrent-body');
+                tbody.innerHTML = torrents.map(t => `
+                    <tr class="hover:bg-slate-700/30 transition-colors">
+                        <td class="px-6 py-4 font-medium">${t.name}</td>
+                        <td class="px-6 py-4">
+                            <span class="text-xs px-2 py-1 rounded ${t.error ? 'bg-red-900/30 text-red-400' : 'bg-blue-900/30 text-blue-400'}">
+                                ${t.status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-right font-mono">${(t.rate_download / 1024).toFixed(1)} KB/s</td>
+                        <td class="px-6 py-4 text-right">${t.peers_connected}</td>
+                    </tr>
+                `).join('');
+
+                // 3. Update History
+                const historyRes = await fetch('/api/history');
+                const history = await historyRes.json();
+                const historyList = document.getElementById('history-list');
+                historyList.innerHTML = history.map(h => `
+                    <div class="p-3 rounded bg-slate-900/50 border-l-4 border-blue-500">
+                        <div class="text-xs text-slate-500">${new Date(h.timestamp).toLocaleString()}</div>
+                        <div class="text-sm font-medium mt-1">${h.from_location} &rarr; ${h.to_location}</div>
+                        <div class="text-xs text-slate-400 mt-1 italic">${h.reason}</div>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                console.error('Error fetching data:', err);
+            }
+        }
+
+        // Manual Rotation Trigger
+        document.getElementById('rotate-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('rotate-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            
+            try {
+                const res = await fetch('/api/rotate', { method: 'POST' });
+                if (res.ok) alert('Rotation triggered successfully!');
+                else alert('Failed to trigger rotation.');
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        });
+
+        // Polling loop
+        fetchData();
+        setInterval(fetchData, 5000);
+    </script>
+</body>
+</html>
