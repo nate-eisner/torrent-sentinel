@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -24,34 +25,65 @@ class SentinelDaemon:
     async def run(self):
         await self.storage.initialize()
         self.running = True
-        logger.info("Torrent Sentinel Daemon started.")
 
+        logger.info("=======================================================")
+        logger.info("  🚀 Torrent Sentinel Daemon Starting Up")
+        logger.info("=======================================================")
+        logger.info("Transmission Host    : %s:%d (path: %s)", settings.TRANSMISSION_HOST, settings.TRANSMISSION_PORT, settings.TRANSMISSION_RPC_PATH)
+        logger.info("Ollama Diagnostics   : enabled=%s (endpoint: %s, model: %s)", settings.OLLAMA_ENABLED, settings.OLLAMA_BASE_URL, settings.OLLAMA_MODEL)
+        logger.info("VPN Adapter Type     : %s (interface: %s)", settings.VPN_TYPE, settings.VPN_INTERFACE)
+        logger.info("VPN Configs Dir      : %s", settings.VPN_CONFIGS_DIR)
+        logger.info("Stalled Thresholds   : min_seeds=%d, min_rate=%.1f KB/s, stalled_duration=%d min", settings.MIN_SEEDS, settings.MIN_DOWNLOAD_RATE_KBPS, settings.STALLED_DURATION_MINUTES)
+        logger.info("Anti-Flapping Rules  : cooldown=%d min, hourly_cap=%d, post_grace=%d min", settings.ROTATION_COOLDOWN_MINUTES, settings.MAX_ROTATIONS_PER_HOUR, settings.POST_ROTATION_GRACE_PERIOD_MINUTES)
+        logger.info("Logging Level        : %s", settings.LOG_LEVEL)
+        logger.info("=======================================================")
+
+        # Run initial test connections
+        if settings.OLLAMA_ENABLED:
+            await self.ollama.health_check()
+
+        available_vpns = await self.vpn_adapter.get_available_locations()
+        logger.info("Discovered %d initial VPN location profile(s).", len(available_vpns))
+
+        cycle = 0
         while self.running:
+            cycle += 1
+            logger.info("--- Monitoring Cycle #%d ---", cycle)
             try:
                 # 1. Monitor
                 torrents = await self.transmission.get_torrents()
                 current_profile = await self.vpn_adapter.get_current_profile()
+                current_loc_name = current_profile.name if current_profile else "Unknown / Default"
+                
+                logger.info(
+                    "Cycle #%d Status: %d active torrent(s) found | Current VPN: '%s'",
+                    cycle, len(torrents), current_loc_name
+                )
 
                 # 2. Decide
                 target_profile = await self.decision_engine.decide_rotation(torrents)
 
                 # 3. Act
                 if target_profile:
-                    reason = "AI recommended rotation" 
+                    reason = f"Automated rotation triggered on cycle #{cycle}"
+                    logger.warning("Triggering rotation to '%s': %s", target_profile.name, reason)
                     success = await self.decision_engine.execute_rotation(current_profile, target_profile, reason)
                     if success:
-                        logger.info(f"Successfully rotated to {target_profile.name}")
+                        logger.info("Cycle #%d: Successfully rotated to '%s'", cycle, target_profile.name)
                     else:
-                        logger.error("Rotation failed")
+                        logger.error("Cycle #%d: Rotation to '%s' failed!", cycle, target_profile.name)
+                else:
+                    logger.info("Cycle #%d: System healthy or rotation not indicated. Standby.", cycle)
 
                 # 4. Wait for next interval
-                import asyncio
-                await asyncio.sleep(60) 
+                logger.debug("Cycle #%d complete. Sleeping for 60 seconds...", cycle)
+                await asyncio.sleep(60)
 
             except Exception as e:
-                logger.exception(f"Error in daemon loop: {e}")
-                import asyncio
+                logger.error("Exception occurred in daemon cycle #%d: %s", cycle, e, exc_info=True)
+                logger.info("Pausing 30 seconds before retrying daemon cycle...")
                 await asyncio.sleep(30)
 
     def stop(self):
+        logger.info("Stopping Torrent Sentinel Daemon...")
         self.running = False

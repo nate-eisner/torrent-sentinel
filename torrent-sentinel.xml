@@ -114,6 +114,11 @@
       <Name>SENTINEL_TELEGRAM_CHAT_ID</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value>INFO</Value>
+      <Name>SENTINEL_LOG_LEVEL</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Config Name="WebUI / API Port" Target="8000" Default="8000" Mode="tcp" Description="Port for Torrent Sentinel WebUI and API" Type="Port" Display="always" Required="false" Mask="false">8000</Config>
   <Config Name="App Data Directory" Target="/app/data" Default="/mnt/user/appdata/torrent-sentinel/data" Mode="rw" Description="Persistent directory for sentinel.db database" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/torrent-sentinel/data</Config>
@@ -131,4 +136,5 @@
   <Config Name="Discord Webhook URL" Target="SENTINEL_DISCORD_WEBHOOK_URL" Default="" Mode="" Description="Discord webhook URL for alerts and rotation notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Telegram Bot Token" Target="SENTINEL_TELEGRAM_BOT_TOKEN" Default="" Mode="" Description="Telegram Bot API Token" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Telegram Chat ID" Target="SENTINEL_TELEGRAM_CHAT_ID" Default="" Mode="" Description="Telegram Chat ID for notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Log Level" Target="SENTINEL_LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
 </Container>

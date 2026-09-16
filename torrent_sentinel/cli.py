@@ -9,9 +9,10 @@ from rich.table import Table
 from rich.panel import Panel
 
 from torrent_sentinel.config import settings
+from torrent_sentinel.logging_config import setup_logging
 from torrent_sentinel.engine.daemon import SentinelDaemon
 from torrent_sentinel.engine.storage import Storage
-from torrent_sentinel.vpn.mock import MockVPNAdapter
+from torrent_sentinel.vpn import get_vpn_adapter
 
 app = typer.Typer(help="Torrent Sentinel CLI")
 console = Console()
@@ -19,22 +20,24 @@ console = Console()
 @app.command()
 def run():
     """Start the Torrent Sentinel daemon."""
-    console.print("[bold green]Starting Torrent Sentinel Daemon...[/bold green]")
-    # Using Mock for default run to ensure it works without Unraid environment
-    adapter = MockVPNAdapter() 
+    setup_logging()
+    logger = logging.getLogger("torrent_sentinel.cli")
+    logger.info("Initializing Torrent Sentinel daemon via CLI...")
+
+    adapter = get_vpn_adapter()
     daemon = SentinelDaemon(adapter)
     
     try:
         asyncio.run(daemon.run())
     except KeyboardInterrupt:
-        console.print("\n[bold yellow]Daemon stopped by user.[/bold yellow]")
+        logger.info("Daemon stopped by user (SIGINT/KeyboardInterrupt).")
 
 @app.command()
 def history():
     """Display recent rotation events."""
+    setup_logging()
     storage = Storage()
-    # Note: This is synchronous in the current implementation, 
-    # but for a CLI it's acceptable or can be wrapped in asyncio.run
+
     async def _get_history():
         await storage.initialize()
         return await storage.get_history()
@@ -42,7 +45,7 @@ def history():
     events = asyncio.run(_get_history())
     
     if not events:
-        console.print("[yellow]No history found.[/yellow]")
+        console.print("[yellow]No history found in database.[/yellow]")
         return
 
     table = Table(title="Rotation History")
@@ -64,16 +67,17 @@ def history():
 @app.command()
 def test_ollama():
     """Test connection to local Ollama instance."""
+    setup_logging()
     from torrent_sentinel.clients.ollama import OllamaClient
     client = OllamaClient()
     
-    console.print(f"Testing Ollama at {settings.OLLAMA_BASE_URL}...")
+    console.print(f"Testing Ollama at {settings.OLLAMA_BASE_URL} (configured model: {settings.OLLAMA_MODEL})...")
     async def _test():
         healthy = await client.health_check()
         if healthy:
-            console.print("[bold green]Ollama is reachable and healthy![/bold green]")
+            console.print("[bold green]✓ Ollama is reachable and healthy![/bold green]")
         else:
-            console.print("[bold red]Ollama is unreachable or unhealthy.[/bold red]")
+            console.print("[bold red]✗ Ollama is unreachable or unhealthy. Check SENTINEL_OLLAMA_BASE_URL.[/bold red]")
 
     asyncio.run(_test())
 

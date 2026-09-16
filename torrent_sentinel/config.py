@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
 
+    # Logging
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+
     model_config = SettingsConfigDict(env_prefix="SENTINEL_", case_sensitive=False)
 
 settings = Settings()

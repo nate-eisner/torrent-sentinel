@@ -193,6 +193,7 @@ All settings can be configured via environment variables prefixed with `SENTINEL
 | `SENTINEL_DISCORD_WEBHOOK_URL` | Discord webhook for notifications | `None` |
 | `SENTINEL_TELEGRAM_BOT_TOKEN` | Telegram bot API token | `None` |
 | `SENTINEL_TELEGRAM_CHAT_ID` | Telegram chat ID for alerts | `None` |
+| `SENTINEL_LOG_LEVEL` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 
 ---
 
