@@ -42,8 +42,8 @@ RUN poetry install --no-interaction --no-ansi
 # Create necessary directories for appdata/logs
 RUN mkdir -p /app/logs /app/data /app/vpn_configs
 
-# Expose API/WebUI port
-EXPOSE 8000
+# Expose Torrent Sentinel WebUI (8000), Transmission WebUI (9091), and Torrent Peer ports (51413)
+EXPOSE 8000 9091 51413/tcp 51413/udp
 
 # Set the entrypoint directly to our CLI
 ENTRYPOINT ["torrent-sentinel"]

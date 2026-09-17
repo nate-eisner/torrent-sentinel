@@ -45,6 +45,22 @@ class SentinelDaemon:
         available_vpns = await self.vpn_adapter.get_available_locations()
         logger.info("Discovered %d initial VPN location profile(s).", len(available_vpns))
 
+        # Ensure VPN gateway tunnel is active on startup
+        current_profile = await self.vpn_adapter.get_current_profile()
+        if not current_profile and available_vpns:
+            initial_target = available_vpns[0]
+            top_locations = await self.storage.get_top_locations(limit=1)
+            if top_locations:
+                fav = next((p for p in available_vpns if p.id == top_locations[0]), None)
+                if fav:
+                    initial_target = fav
+            logger.info("No active VPN tunnel detected on startup. Initializing gateway tunnel to: '%s'", initial_target.name)
+            init_success = await self.vpn_adapter.rotate_to(initial_target)
+            if init_success:
+                logger.info("Initial VPN gateway tunnel established to '%s'", initial_target.name)
+            else:
+                logger.warning("Failed to establish initial VPN gateway tunnel to '%s'", initial_target.name)
+
         cycle = 0
         while self.running:
             cycle += 1

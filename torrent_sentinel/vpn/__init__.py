@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 def get_vpn_adapter() -> BaseVPNAdapter:
     """Returns the configured VPN adapter instance."""
     adapter_type = settings.VPN_TYPE.lower().strip()
-    if adapter_type == "unraid_wireguard":
+    if adapter_type in ("wireguard", "wireguard_gateway", "unraid_wireguard"):
         from torrent_sentinel.vpn.unraid_wireguard import UnraidWireGuardAdapter
-        logger.info("Instantiating UnraidWireGuardAdapter (interface: %s)", settings.VPN_INTERFACE)
+        logger.info("Instantiating WireGuard Adapter (interface: %s)", settings.VPN_INTERFACE)
         return UnraidWireGuardAdapter()
     elif adapter_type == "mock":
         from torrent_sentinel.vpn.mock import MockVPNAdapter

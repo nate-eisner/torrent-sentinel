@@ -3,7 +3,7 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # Transmission
-    TRANSMISSION_HOST: str = "localhost"
+    TRANSMISSION_HOST: str = "127.0.0.1"
     TRANSMISSION_PORT: int = 9091
     TRANSMISSION_RPC_PATH: str = "/transmission/rpc"
     TRANSMISSION_AUTH: Optional[str] = None
@@ -14,11 +14,14 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "gemma4:26b"
     OLLAMA_TIMEOUT: int = 300
 
-    # VPN Provider (Unraid WireGuard)
-    VPN_TYPE: str = "unraid_wireguard"  # unraid_wireguard, mock, command
+    # VPN Gateway (WireGuard)
+    VPN_TYPE: str = "wireguard"  # wireguard, unraid_wireguard, mock
     VPN_INTERFACE: str = "wg1"
     VPN_CONFIGS_DIR: str = "/app/vpn_configs/"
     VPN_ACTIVE_CONFIG: str = "/app/vpn_configs/active.conf"
+
+    # Local Network Subnets for LAN WebUI Bypass (comma-separated CIDRs)
+    LAN_NETWORK: Optional[str] = "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"
 
     # Health Thresholds
     MIN_SEEDS: int = 2

@@ -48,10 +48,62 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
         logger.info("Found %d WireGuard profile(s) in %s: %s", len(profiles), self.configs_dir, [p.id for p in profiles])
         return profiles
 
+    def _teardown_existing_interfaces(self):
+        """Finds and tears down any active WireGuard interfaces."""
+        try:
+            show_res = subprocess.run(["wg", "show", "interfaces"], capture_output=True, text=True)
+            if show_res.returncode == 0 and show_res.stdout.strip():
+                for iface in show_res.stdout.strip().split():
+                    logger.debug("Tearing down active WireGuard interface: %s", iface)
+                    subprocess.run(["wg-quick", "down", iface], capture_output=True, text=True)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.debug("Interface teardown check: %s", e)
+
+    def _apply_lan_routing(self):
+        """Applies policy routing rules and routes so LAN traffic to published ports (8000, 9091) can bypass VPN."""
+        if not settings.LAN_NETWORK:
+            return
+
+        subnets = [s.strip() for s in settings.LAN_NETWORK.split(",") if s.strip()]
+        if not subnets:
+            return
+
+        logger.info("Applying LAN bypass routing for subnets: %s", subnets)
+        try:
+            # 1. Add policy routing rules for each subnet to lookup table 'main' with priority 100
+            # (wg-quick adds lookup 51820 at priority ~32764, so priority 100 takes precedence)
+            for subnet in subnets:
+                subprocess.run(["ip", "-4", "rule", "del", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
+                res = subprocess.run(["ip", "-4", "rule", "add", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
+                if res.returncode == 0:
+                    logger.debug("Added ip rule to table main for %s", subnet)
+
+            # 2. Add explicit route via eth0 default gateway in table main if available
+            gw_proc = subprocess.run(["ip", "route", "show", "dev", "eth0"], capture_output=True, text=True)
+            if gw_proc.returncode == 0:
+                for line in gw_proc.stdout.splitlines():
+                    if line.startswith("default via"):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            gw_ip = parts[2]
+                            for subnet in subnets:
+                                subprocess.run(["ip", "route", "del", subnet, "via", gw_ip, "dev", "eth0"], capture_output=True, text=True)
+                                subprocess.run(["ip", "route", "add", subnet, "via", gw_ip, "dev", "eth0"], capture_output=True, text=True)
+                            logger.debug("Added explicit LAN routes via eth0 gateway %s", gw_ip)
+                        break
+        except FileNotFoundError:
+            logger.debug("Command 'ip' not found; skipping LAN routing configuration.")
+        except Exception as e:
+            logger.warning("Could not complete LAN bypass routing: %s", e)
+
     async def rotate_to(self, profile: LocationProfile) -> bool:
         logger.info("Starting WireGuard rotation to profile '%s' (%s)...", profile.name, profile.config_file)
         try:
             # 1. Stop current/previous tunnels
+            self._teardown_existing_interfaces()
+
             if self._current_profile and self._current_profile.config_file != profile.config_file:
                 logger.debug("Tearing down previous WireGuard profile: %s", self._current_profile.config_file)
                 subprocess.run(["wg-quick", "down", self._current_profile.config_file], capture_output=True, text=True)
@@ -89,6 +141,9 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
 
             logger.info("wg-quick up succeeded for profile '%s'. Interface output: %s", profile.name, result.stdout.strip())
             self._current_profile = profile
+
+            # 5. Apply LAN bypass routing to ensure WebUIs remain accessible
+            self._apply_lan_routing()
             return True
 
         except FileNotFoundError:
@@ -101,4 +156,23 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
             return False
 
     async def get_current_profile(self) -> Optional[LocationProfile]:
-        return self._current_profile
+        if self._current_profile is not None:
+            return self._current_profile
+
+        # Check if an active WireGuard interface is already running
+        try:
+            show_res = subprocess.run(["wg", "show", "interfaces"], capture_output=True, text=True)
+            if show_res.returncode == 0 and show_res.stdout.strip():
+                active_ifaces = show_res.stdout.strip().split()
+                if active_ifaces:
+                    locations = await self.get_available_locations()
+                    for loc in locations:
+                        if loc.id in active_ifaces:
+                            self._current_profile = loc
+                            return loc
+        except Exception:
+            pass
+
+        return None
+
+WireGuardGatewayAdapter = UnraidWireGuardAdapter

@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/nate-eisner/torrent-sentinel/issues</Support>
   <Project>https://github.com/nate-eisner/torrent-sentinel</Project>
-  <Overview>Torrent Sentinel - Automated VPN Rotation &amp; Torrent Health Monitor with AI Diagnostics (Ollama) and Web Dashboard.</Overview>
+  <Overview>Torrent Sentinel - Automated WireGuard VPN Gateway &amp; Torrent Health Monitor with AI Diagnostics (Ollama) and Web Dashboard.</Overview>
   <Category>Downloaders: Tools: Network:VPN</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/nate-eisner/torrent-sentinel/main/torrent-sentinel.xml</TemplateURL>
@@ -20,7 +20,15 @@
   <DateInstalled></DateInstalled>
   <DonateText></DonateText>
   <DonateLink></DonateLink>
-  <Description>Torrent Sentinel monitors your Transmission torrent client and automatically rotates VPN profiles when stalled or slow, leveraging local LLM (Ollama) diagnostics to verify network health and avoid flapping. Includes a real-time Web Dashboard for monitoring and manual control.</Description>
+  <Description>Torrent Sentinel acts as an automated WireGuard VPN Gateway container for Transmission. Transmission routes its network through Torrent Sentinel (--net=container:torrent-sentinel), guaranteeing that torrent swarm traffic is continuously secured and automatically rotated across healthy WireGuard endpoints when stalled.
+
+UNRAID SETUP:
+1. Start torrent-sentinel with your WireGuard .conf files placed in /mnt/user/appdata/torrent-sentinel/vpn_configs/.
+2. In your Transmission container settings:
+   - Set Network Type to 'None'
+   - Click 'Show more settings...' and in Extra Parameters add: --net=container:torrent-sentinel
+   - Remove host port mappings in the Transmission template (ports 9091 and 51413 are published by torrent-sentinel).
+3. Access Torrent Sentinel at http://[UNRAID-IP]:8000/ and Transmission at http://[UNRAID-IP]:9091/.</Description>
   <Networking>
     <Mode>bridge</Mode>
     <Publish>
@@ -28,6 +36,21 @@
         <HostPort>8000</HostPort>
         <ContainerPort>8000</ContainerPort>
         <Protocol>tcp</Protocol>
+      </Port>
+      <Port>
+        <HostPort>9091</HostPort>
+        <ContainerPort>9091</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+      <Port>
+        <HostPort>51413</HostPort>
+        <ContainerPort>51413</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+      <Port>
+        <HostPort>51413</HostPort>
+        <ContainerPort>51413</ContainerPort>
+        <Protocol>udp</Protocol>
       </Port>
     </Publish>
   </Networking>
@@ -45,7 +68,7 @@
   </Data>
   <Environment>
     <Variable>
-      <Value>192.168.0.X</Value>
+      <Value>127.0.0.1</Value>
       <Name>SENTINEL_TRANSMISSION_HOST</Name>
       <Mode/>
     </Variable>
@@ -80,7 +103,7 @@
       <Mode/>
     </Variable>
     <Variable>
-      <Value>unraid_wireguard</Value>
+      <Value>wireguard</Value>
       <Name>SENTINEL_VPN_TYPE</Name>
       <Mode/>
     </Variable>
@@ -97,6 +120,11 @@
     <Variable>
       <Value>/app/vpn_configs/active.conf</Value>
       <Name>SENTINEL_VPN_ACTIVE_CONFIG</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>192.168.0.0/16,10.0.0.0/8,172.16.0.0/12</Value>
+      <Name>SENTINEL_LAN_NETWORK</Name>
       <Mode/>
     </Variable>
     <Variable>
@@ -121,17 +149,21 @@
     </Variable>
   </Environment>
   <Config Name="WebUI / API Port" Target="8000" Default="8000" Mode="tcp" Description="Port for Torrent Sentinel WebUI and API" Type="Port" Display="always" Required="false" Mask="false">8000</Config>
+  <Config Name="Transmission WebUI Port" Target="9091" Default="9091" Mode="tcp" Description="Port for Transmission WebUI (routed through this gateway)" Type="Port" Display="always" Required="false" Mask="false">9091</Config>
+  <Config Name="Transmission Peer Port (TCP)" Target="51413" Default="51413" Mode="tcp" Description="Torrent peer listening port TCP" Type="Port" Display="always" Required="false" Mask="false">51413</Config>
+  <Config Name="Transmission Peer Port (UDP)" Target="51413" Default="51413" Mode="udp" Description="Torrent peer listening port UDP" Type="Port" Display="always" Required="false" Mask="false">51413</Config>
   <Config Name="App Data Directory" Target="/app/data" Default="/mnt/user/appdata/torrent-sentinel/data" Mode="rw" Description="Persistent directory for sentinel.db database" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/torrent-sentinel/data</Config>
   <Config Name="VPN Configs Directory" Target="/app/vpn_configs" Default="/mnt/user/appdata/torrent-sentinel/vpn_configs" Mode="rw" Description="Directory containing WireGuard .conf profiles" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/torrent-sentinel/vpn_configs</Config>
-  <Config Name="Transmission Host" Target="SENTINEL_TRANSMISSION_HOST" Default="192.168.0.X" Mode="" Description="IP address or hostname of Transmission" Type="Variable" Display="always" Required="true" Mask="false">192.168.0.X</Config>
+  <Config Name="Transmission Host" Target="SENTINEL_TRANSMISSION_HOST" Default="127.0.0.1" Mode="" Description="IP of Transmission. Use 127.0.0.1 when Transmission routes through this container via --net=container:torrent-sentinel" Type="Variable" Display="always" Required="true" Mask="false">127.0.0.1</Config>
   <Config Name="Transmission Port" Target="SENTINEL_TRANSMISSION_PORT" Default="9091" Mode="" Description="Transmission RPC Port" Type="Variable" Display="always" Required="true" Mask="false">9091</Config>
   <Config Name="Transmission RPC Path" Target="SENTINEL_TRANSMISSION_RPC_PATH" Default="/transmission/rpc" Mode="" Description="Transmission RPC Path" Type="Variable" Display="advanced" Required="false" Mask="false">/transmission/rpc</Config>
   <Config Name="Transmission Auth" Target="SENTINEL_TRANSMISSION_AUTH" Default="" Mode="" Description="Transmission credentials in username:password format (leave empty if disabled)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="LAN Subnets Bypass" Target="SENTINEL_LAN_NETWORK" Default="192.168.0.0/16,10.0.0.0/8,172.16.0.0/12" Mode="" Description="Comma-separated local subnets allowed to bypass VPN for WebUI access (e.g. 192.168.1.0/24)" Type="Variable" Display="always" Required="false" Mask="false">192.168.0.0/16,10.0.0.0/8,172.16.0.0/12</Config>
   <Config Name="Ollama Enabled" Target="SENTINEL_OLLAMA_ENABLED" Default="true" Mode="" Description="Enable AI diagnostics via Ollama (true/false)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
   <Config Name="Ollama Base URL" Target="SENTINEL_OLLAMA_BASE_URL" Default="http://192.168.0.10:11434" Mode="" Description="Ollama API base URL" Type="Variable" Display="always" Required="false" Mask="false">http://192.168.0.10:11434</Config>
   <Config Name="Ollama Model" Target="SENTINEL_OLLAMA_MODEL" Default="gemma4:26b" Mode="" Description="Ollama model for diagnosis" Type="Variable" Display="always" Required="false" Mask="false">gemma4:26b</Config>
-  <Config Name="VPN Adapter Type" Target="SENTINEL_VPN_TYPE" Default="unraid_wireguard" Mode="" Description="VPN adapter type (unraid_wireguard, mock, or command)" Type="Variable" Display="always" Required="true" Mask="false">unraid_wireguard</Config>
-  <Config Name="VPN Interface" Target="SENTINEL_VPN_INTERFACE" Default="wg1" Mode="" Description="WireGuard interface name on host (e.g. wg1)" Type="Variable" Display="always" Required="false" Mask="false">wg1</Config>
+  <Config Name="VPN Adapter Type" Target="SENTINEL_VPN_TYPE" Default="wireguard" Mode="" Description="VPN adapter type (wireguard, unraid_wireguard, or mock)" Type="Variable" Display="always" Required="true" Mask="false">wireguard</Config>
+  <Config Name="VPN Interface" Target="SENTINEL_VPN_INTERFACE" Default="wg1" Mode="" Description="WireGuard interface name" Type="Variable" Display="advanced" Required="false" Mask="false">wg1</Config>
   <Config Name="Active VPN Config File" Target="SENTINEL_VPN_ACTIVE_CONFIG" Default="/app/vpn_configs/active.conf" Mode="" Description="Path to current active WireGuard configuration" Type="Variable" Display="advanced" Required="false" Mask="false">/app/vpn_configs/active.conf</Config>
   <Config Name="Discord Webhook URL" Target="SENTINEL_DISCORD_WEBHOOK_URL" Default="" Mode="" Description="Discord webhook URL for alerts and rotation notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Telegram Bot Token" Target="SENTINEL_TELEGRAM_BOT_TOKEN" Default="" Mode="" Description="Telegram Bot API Token" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
