@@ -2,7 +2,7 @@ import os
 import logging
 import aiosqlite
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from torrent_sentinel.config import settings
 from torrent_sentinel.models import RotationEvent, LocationProfile, BoostEvent
 
