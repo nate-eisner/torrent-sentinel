@@ -38,6 +38,27 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
 
+    # Boosting & Rescue
+    BOOST_ENABLED: bool = True
+    AUTO_VPN_ROTATION_ENABLED: bool = True
+    STALL_THRESHOLD_MINUTES: int = 5
+    RESCUE_GRACE_PERIOD_MINUTES: int = 60
+    AUTO_FAILOVER_ENABLED: bool = False
+    AUTO_BOOST_CADENCE_MINUTES: int = 120
+    TRACKER_LIST_URLS: list[str] = [
+        "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt",
+        "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all_udp.txt",
+        "https://newtrackon.com/api/stable"
+    ]
+
+    # Servarr Settings (Sonarr, Radarr, Lidarr)
+    SONARR_URL: Optional[str] = None
+    SONARR_API_KEY: Optional[str] = None
+    RADARR_URL: Optional[str] = None
+    RADARR_API_KEY: Optional[str] = None
+    LIDARR_URL: Optional[str] = None
+    LIDARR_API_KEY: Optional[str] = None
+
     # Logging
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
 

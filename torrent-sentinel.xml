@@ -147,6 +147,51 @@ UNRAID SETUP:
       <Name>SENTINEL_LOG_LEVEL</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value>true</Value>
+      <Name>SENTINEL_BOOST_ENABLED</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>true</Value>
+      <Name>SENTINEL_AUTO_VPN_ROTATION_ENABLED</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>false</Value>
+      <Name>SENTINEL_AUTO_FAILOVER_ENABLED</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_SONARR_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_SONARR_API_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_RADARR_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_RADARR_API_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_LIDARR_URL</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>SENTINEL_LIDARR_API_KEY</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Config Name="WebUI / API Port" Target="8000" Default="8000" Mode="tcp" Description="Port for Torrent Sentinel WebUI and API" Type="Port" Display="always" Required="false" Mask="false">8000</Config>
   <Config Name="Transmission WebUI Port" Target="9091" Default="9091" Mode="tcp" Description="Port for Transmission WebUI (routed through this gateway)" Type="Port" Display="always" Required="false" Mask="false">9091</Config>
@@ -168,5 +213,14 @@ UNRAID SETUP:
   <Config Name="Discord Webhook URL" Target="SENTINEL_DISCORD_WEBHOOK_URL" Default="" Mode="" Description="Discord webhook URL for alerts and rotation notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Telegram Bot Token" Target="SENTINEL_TELEGRAM_BOT_TOKEN" Default="" Mode="" Description="Telegram Bot API Token" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Telegram Chat ID" Target="SENTINEL_TELEGRAM_CHAT_ID" Default="" Mode="" Description="Telegram Chat ID for notifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Torrent Booster Enabled" Target="SENTINEL_BOOST_ENABLED" Default="true" Mode="" Description="Enable automatic individual torrent tracker injection and boosting" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Auto VPN Rotation Enabled" Target="SENTINEL_AUTO_VPN_ROTATION_ENABLED" Default="true" Mode="" Description="Enable LLM-judged automatic VPN rotation when swarms are degraded" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="Auto Servarr Failover" Target="SENTINEL_AUTO_FAILOVER_ENABLED" Default="false" Mode="" Description="Automatically blocklist and search replacement for expired dead releases" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Sonarr URL" Target="SENTINEL_SONARR_URL" Default="" Mode="" Description="URL to Sonarr (e.g. http://192.168.1.100:8989)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Sonarr API Key" Target="SENTINEL_SONARR_API_KEY" Default="" Mode="" Description="Sonarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Radarr URL" Target="SENTINEL_RADARR_URL" Default="" Mode="" Description="URL to Radarr (e.g. http://192.168.1.100:7878)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Radarr API Key" Target="SENTINEL_RADARR_API_KEY" Default="" Mode="" Description="Radarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Lidarr URL" Target="SENTINEL_LIDARR_URL" Default="" Mode="" Description="URL to Lidarr (e.g. http://192.168.1.100:8686)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Lidarr API Key" Target="SENTINEL_LIDARR_API_KEY" Default="" Mode="" Description="Lidarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Log Level" Target="SENTINEL_LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
 </Container>

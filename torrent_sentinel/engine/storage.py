@@ -4,7 +4,7 @@ import aiosqlite
 from datetime import datetime
 from typing import List, Optional
 from torrent_sentinel.config import settings
-from torrent_sentinel.models import RotationEvent, LocationProfile
+from torrent_sentinel.models import RotationEvent, LocationProfile, BoostEvent
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,25 @@ class Storage:
                     success_count INTEGER,
                     failure_count INTEGER,
                     last_updated DATETIME
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS boost_events (
+                    id TEXT PRIMARY KEY,
+                    timestamp DATETIME,
+                    torrent_id TEXT,
+                    torrent_hash TEXT,
+                    torrent_name TEXT,
+                    action TEXT,
+                    details TEXT,
+                    servarr_app TEXT,
+                    success BOOLEAN
+                )
+            """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS settings_kv (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
                 )
             """)
             await db.commit()
@@ -94,3 +113,70 @@ class Storage:
                 ) for row in rows]
                 logger.debug("Fetched %d historical rotation event(s) from database.", len(events))
                 return events
+
+    async def record_boost_event(self, event: BoostEvent):
+        logger.debug("Recording boost event %s for torrent '%s' (action: %s)...", event.id, event.torrent_name, event.action)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO boost_events (id, timestamp, torrent_id, torrent_hash, torrent_name, action, details, servarr_app, success)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.timestamp.isoformat(),
+                    event.torrent_id,
+                    event.torrent_hash,
+                    event.torrent_name,
+                    event.action,
+                    event.details,
+                    event.servarr_app.value if event.servarr_app else None,
+                    event.success
+                )
+            )
+            await db.commit()
+
+    async def get_boost_events(self, limit: int = 100) -> List[BoostEvent]:
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM boost_events ORDER BY timestamp DESC LIMIT ?", (limit,)) as cursor:
+                rows = await cursor.fetchall()
+                events = []
+                for row in rows:
+                    app_val = row["servarr_app"]
+                    app_enum = None
+                    if app_val:
+                        try:
+                            from torrent_sentinel.models import ServarrType
+                            app_enum = ServarrType(app_val)
+                        except Exception:
+                            pass
+                    events.append(BoostEvent(
+                        id=row["id"],
+                        timestamp=datetime.fromisoformat(row["timestamp"]),
+                        torrent_id=row["torrent_id"] or "",
+                        torrent_hash=row["torrent_hash"] or "",
+                        torrent_name=row["torrent_name"] or "",
+                        action=row["action"] or "",
+                        details=row["details"] or "",
+                        servarr_app=app_enum,
+                        success=bool(row["success"])
+                    ))
+                return events
+
+    async def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT value FROM settings_kv WHERE key = ?", (key,)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return row[0]
+                return default
+
+    async def set_setting(self, key: str, value: str):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO settings_kv (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?
+            """, (key, value, value))
+            await db.commit()
+

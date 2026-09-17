@@ -7,6 +7,8 @@ import httpx
 from torrent_sentinel.config import settings
 from torrent_sentinel.clients.transmission import TransmissionClient
 from torrent_sentinel.clients.ollama import OllamaClient
+from torrent_sentinel.services.tracker_service import TrackerService
+from torrent_sentinel.engine.booster import TorrentBooster
 from torrent_sentinel.engine.diagnostics import Diagnostics
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.decision import DecisionEngine
@@ -19,8 +21,15 @@ class SentinelDaemon:
         self.transmission = TransmissionClient()
         self.ollama = OllamaClient()
         self.storage = Storage()
+        self.tracker_service = TrackerService(settings.TRACKER_LIST_URLS)
         self.diagnostics = Diagnostics(self.transmission, self.ollama)
         self.decision_engine = DecisionEngine(self.diagnostics, self.storage, vpn_adapter)
+        self.booster = TorrentBooster(
+            self.transmission,
+            self.tracker_service,
+            self.storage,
+            self.decision_engine.notifications
+        )
         self.vpn_adapter = vpn_adapter
         self.running = False
 
@@ -37,12 +46,18 @@ class SentinelDaemon:
         logger.info("VPN Configs Dir      : %s", settings.VPN_CONFIGS_DIR)
         logger.info("Stalled Thresholds   : min_seeds=%d, min_rate=%.1f KB/s, stalled_duration=%d min", settings.MIN_SEEDS, settings.MIN_DOWNLOAD_RATE_KBPS, settings.STALLED_DURATION_MINUTES)
         logger.info("Anti-Flapping Rules  : cooldown=%d min, hourly_cap=%d, post_grace=%d min", settings.ROTATION_COOLDOWN_MINUTES, settings.MAX_ROTATIONS_PER_HOUR, settings.POST_ROTATION_GRACE_PERIOD_MINUTES)
+        logger.info("Torrent Booster      : enabled=%s (grace=%dm, cadence=%dm, auto_failover=%s)", settings.BOOST_ENABLED, settings.RESCUE_GRACE_PERIOD_MINUTES, settings.AUTO_BOOST_CADENCE_MINUTES, settings.AUTO_FAILOVER_ENABLED)
+        logger.info("Auto VPN Rotation    : enabled=%s", settings.AUTO_VPN_ROTATION_ENABLED)
         logger.info("Logging Level        : %s", settings.LOG_LEVEL)
         logger.info("=======================================================")
 
-        # Run initial test connections
+        # Run initial test connections and preload trackers
         if settings.OLLAMA_ENABLED:
             await self.ollama.health_check()
+
+        if settings.BOOST_ENABLED:
+            logger.info("Preloading verified public trackers in background...")
+            asyncio.create_task(self.tracker_service.refresh_trackers())
 
         available_vpns = await self.vpn_adapter.get_available_locations()
         logger.info("Discovered %d initial VPN location profile(s).", len(available_vpns))
@@ -87,20 +102,29 @@ class SentinelDaemon:
                     cycle, len(torrents), current_loc_name
                 )
 
-                # 2. Decide
-                target_profile = await self.decision_engine.decide_rotation(torrents)
+                # 2. Boost stuck torrents
+                if settings.BOOST_ENABLED:
+                    await self.booster.run_cycle(torrents)
 
-                # 3. Act
-                if target_profile:
-                    reason = f"Automated rotation triggered on cycle #{cycle}"
-                    logger.warning("Triggering rotation to '%s': %s", target_profile.name, reason)
-                    success = await self.decision_engine.execute_rotation(current_profile, target_profile, reason)
-                    if success:
-                        logger.info("Cycle #%d: Successfully rotated to '%s'", cycle, target_profile.name)
+                # 3. LLM-Evaluated VPN Rotation
+                if settings.AUTO_VPN_ROTATION_ENABLED:
+                    target_profile = await self.decision_engine.decide_rotation(
+                        torrents,
+                        stalled_records=self.booster.stalled_records
+                    )
+
+                    if target_profile:
+                        reason = f"Automated rotation triggered on cycle #{cycle}"
+                        logger.warning("Triggering rotation to '%s': %s", target_profile.name, reason)
+                        success = await self.decision_engine.execute_rotation(current_profile, target_profile, reason)
+                        if success:
+                            logger.info("Cycle #%d: Successfully rotated to '%s'", cycle, target_profile.name)
+                        else:
+                            logger.error("Cycle #%d: Rotation to '%s' failed!", cycle, target_profile.name)
                     else:
-                        logger.error("Cycle #%d: Rotation to '%s' failed!", cycle, target_profile.name)
+                        logger.info("Cycle #%d: Swarm healthy or rotation not indicated. Standby.", cycle)
                 else:
-                    logger.info("Cycle #%d: System healthy or rotation not indicated. Standby.", cycle)
+                    logger.debug("Auto VPN rotation is disabled by configuration.")
 
                 # 4. Wait for next interval
                 logger.debug("Cycle #%d complete. Sleeping for 60 seconds...", cycle)

@@ -96,3 +96,46 @@ def test_torrent_info_validation():
     assert t2.error == 2
     assert t2.error_string == "Connection timed out"
 
+@pytest.mark.asyncio
+async def test_diagnostics_analyze_torrents_context(mock_transmission, mock_ollama):
+    from torrent_sentinel.engine.diagnostics import Diagnostics
+    diagnostics = Diagnostics(mock_transmission, mock_ollama)
+
+    t_stalled = TorrentInfo(
+        id="1",
+        name="Stalled 1",
+        status="stalled",
+        rateDownload=0.0,
+        rateUpload=0.0,
+        peersConnected=0,
+        peersSendingToUs=0
+    )
+    t_downloading = TorrentInfo(
+        id="2",
+        name="Healthy 1",
+        status="downloading",
+        rateDownload=100000.0,
+        rateUpload=10000.0,
+        peersConnected=12,
+        peersSendingToUs=8
+    )
+
+    mock_ollama.diagnose_stalled_torrents.return_value = OllamaDiagnosis(
+        should_rotate=False,
+        confidence=0.8,
+        reasoning="Only 1 torrent stalled while other has 12 peers",
+        suggested_action="Boost stalled torrent"
+    )
+
+    result = await diagnostics.analyze_torrents([t_stalled, t_downloading])
+    assert result is not None
+    assert result.should_rotate is False
+    mock_ollama.diagnose_stalled_torrents.assert_called_once()
+    context = mock_ollama.diagnose_stalled_torrents.call_args[0][0]
+    assert context["summary"]["stalled_count"] == 1
+    assert context["summary"]["downloading_count"] == 1
+    assert context["summary"]["total_downloading_peers"] == 12
+    assert len(context["downloading_torrents"]) == 1
+    assert len(context["stalled_torrents"]) == 1
+
+

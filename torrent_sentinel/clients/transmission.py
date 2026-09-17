@@ -63,17 +63,19 @@ class TransmissionClient:
         response.raise_for_status()
         return response.json()
 
+    def _normalize_id(self, identifier: str):
+        return int(identifier) if identifier.isdigit() else identifier
+
     async def get_torrents(self) -> List[TorrentInfo]:
         logger.debug("Fetching torrent list from Transmission...")
         payload = {
             "method": "torrent-get",
             "arguments": {
                 "fields": [
-                    "id", "name", "status", "percentDone",
+                    "id", "hashString", "name", "status", "percentDone",
                     "rateDownload", "rateUpload",
-                    "downloadSpeed", "uploadSpeed",
-                    "peersConnected", "peersSendingToUs",
-                    "eta", "error", "errorString"
+                    "peersConnected", "peersSendingToUs", "peersGettingFromUs",
+                    "eta", "error", "errorString", "addedDate", "labels"
                 ]
             }
         }
@@ -84,35 +86,150 @@ class TransmissionClient:
         raw_torrents = data.get("arguments", {}).get("torrents", [])
         torrents = []
         for t in raw_torrents:
+            raw_labels = t.get("labels") or []
+            labels = list(raw_labels) if isinstance(raw_labels, list) else [str(raw_labels)]
             torrents.append(TorrentInfo(
                 id=str(t.get("id")),
+                hash=str(t.get("hashString", "")).lower(),
                 name=t.get("name", "Unknown"),
                 status=str(t.get("status", "")),
-                rateDownload=float(t.get("rateDownload", t.get("downloadSpeed", 0))),
-                rateUpload=float(t.get("rateUpload", t.get("uploadSpeed", 0))),
+                progress=float(t.get("percentDone", 0.0)),
+                rateDownload=float(t.get("rateDownload", 0)),
+                rateUpload=float(t.get("rateUpload", 0)),
                 peersConnected=int(t.get("peersConnected", 0)),
                 peersSendingToUs=int(t.get("peersSendingToUs", 0)),
+                peersGettingFromUs=int(t.get("peersGettingFromUs", 0)),
                 eta=t.get("eta"),
                 error=t.get("error"),
-                errorString=t.get("errorString")
+                errorString=t.get("errorString"),
+                addedDate=int(t.get("addedDate", 0)),
+                labels=labels
             ))
 
         logger.info("Retrieved %d torrent(s) from Transmission", len(torrents))
         for t in torrents:
             logger.debug(
-                "  - Torrent #%s '%s' | status=%s | dl=%.1f KB/s, ul=%.1f KB/s | peers=%d (active=%d) | error=%s ('%s')",
-                t.id, t.name, t.status, t.rate_download / 1024.0, t.rate_upload / 1024.0,
-                t.peers_connected, t.peers_sending_to_us, t.error, t.error_string or ""
+                "  - Torrent #%s '%s' (hash: %s, prog: %.1f%%) | status=%s | dl=%.1f KB/s, ul=%.1f KB/s | peers=%d (seeds=%d, leechs=%d) | error=%s ('%s')",
+                t.id, t.name, t.hash[:8] if t.hash else "", t.progress * 100.0, t.status,
+                t.rate_download / 1024.0, t.rate_upload / 1024.0,
+                t.peers_connected, t.peers_sending_to_us, t.peers_getting_from_us,
+                t.error, t.error_string or ""
             )
 
         return torrents
 
-    async def reannounce_torrents(self, torrent_ids: List[str]):
+    async def add_trackers(self, torrent_id: str, trackers: List[str]) -> bool:
+        """Inject a list of tracker URLs into a torrent swarm."""
+        if not trackers:
+            return True
+        logger.info("Injecting %d tracker(s) into Transmission torrent %s", len(trackers), torrent_id)
+        payload = {
+            "method": "torrent-set",
+            "arguments": {
+                "ids": [self._normalize_id(torrent_id)],
+                "trackerAdd": trackers
+            }
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to add trackers to torrent %s: %s", torrent_id, e)
+            return False
+
+    async def reannounce_torrents(self, torrent_ids: List[str]) -> bool:
+        if not torrent_ids:
+            return True
         logger.info("Requesting tracker re-announce for %d torrent(s): %s", len(torrent_ids), torrent_ids)
         payload = {
             "method": "torrent-reannounce",
-            "arguments": {"ids": [int(i) for i in torrent_ids]}
+            "arguments": {"ids": [self._normalize_id(i) for i in torrent_ids]}
         }
-        async with httpx.AsyncClient() as client:
-            await self._post_rpc(client, payload)
-        logger.info("Successfully sent reannounce signal to Transmission")
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to reannounce torrents %s: %s", torrent_ids, e)
+            return False
+
+    async def recheck(self, torrent_id: str) -> bool:
+        """Force verification of torrent integrity."""
+        logger.info("Requesting force verification for torrent %s", torrent_id)
+        payload = {
+            "method": "torrent-verify",
+            "arguments": {"ids": [self._normalize_id(torrent_id)]}
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to recheck torrent %s: %s", torrent_id, e)
+            return False
+
+    async def resume(self, torrent_id: str) -> bool:
+        """Resume / start a torrent."""
+        logger.info("Requesting start/resume for torrent %s", torrent_id)
+        payload = {
+            "method": "torrent-start",
+            "arguments": {"ids": [self._normalize_id(torrent_id)]}
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to resume torrent %s: %s", torrent_id, e)
+            return False
+
+    async def delete_torrent(self, torrent_id: str, delete_files: bool = True) -> bool:
+        """Delete torrent and optionally local downloaded files."""
+        logger.warning("Deleting torrent %s (delete_files=%s)", torrent_id, delete_files)
+        payload = {
+            "method": "torrent-remove",
+            "arguments": {
+                "ids": [self._normalize_id(torrent_id)],
+                "delete-local-data": delete_files
+            }
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to delete torrent %s: %s", torrent_id, e)
+            return False
+
+    async def add_labels(self, torrent_id: str, labels: List[str]) -> bool:
+        """Add labels without overwriting existing ones."""
+        if not labels:
+            return True
+        norm_id = self._normalize_id(torrent_id)
+        try:
+            async with httpx.AsyncClient() as client:
+                data = await self._post_rpc(client, {
+                    "method": "torrent-get",
+                    "arguments": {"ids": [norm_id], "fields": ["labels"]}
+                })
+                existing_labels: List[str] = []
+                torrents = data.get("arguments", {}).get("torrents", [])
+                if torrents:
+                    raw = torrents[0].get("labels") or []
+                    if isinstance(raw, list):
+                        existing_labels = list(raw)
+
+                for label in labels:
+                    if label not in existing_labels:
+                        existing_labels.append(label)
+
+                res = await self._post_rpc(client, {
+                    "method": "torrent-set",
+                    "arguments": {"ids": [norm_id], "labels": existing_labels}
+                })
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to add labels %s to torrent %s: %s", labels, torrent_id, e)
+            return False
+

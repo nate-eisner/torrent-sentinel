@@ -59,8 +59,18 @@ class OllamaClient:
                     {
                         "role": "system",
                         "content": (
-                            "You are a network diagnostic expert. Analyze torrent tracker errors and recommend VPN rotations. "
-                            "Your response must be a single JSON object that strictly follows this schema: "
+                            "You are an expert BitTorrent network diagnostic and WireGuard VPN routing advisor. "
+                            "Analyze the status of all active torrents (stuck vs actively downloading, and peer counts) "
+                            "to decide whether a full WireGuard VPN gateway location swap is warranted.\n\n"
+                            "Decision Guidelines:\n"
+                            "1. Swapping VPN locations drops the network tunnel for ALL torrents, interrupting active downloads.\n"
+                            "2. An individual torrent booster already handles isolated stuck torrents by injecting verified public trackers and re-announcing.\n"
+                            "3. Do NOT recommend rotating VPN (should_rotate = false) if only one or a few torrents are stuck while others are downloading healthily with active peers, or if stuck torrents are newly queued.\n"
+                            "4. Recommend rotating VPN (should_rotate = true) if:\n"
+                            "   - Actively downloading torrents have very minimal peers across the board (e.g. 0-2 peers each), indicating VPN endpoint throttling or tracker blocking on the current VPN IP.\n"
+                            "   - Multiple torrents are stuck and tracker boost attempts have already failed with 0 seeds.\n"
+                            "   - Severe tracker errors across multiple torrents indicate IP shadow-banning on the current VPN location.\n\n"
+                            "Your response must be a single JSON object that strictly follows this schema:\n"
                             '{"should_rotate": boolean, "recommended_location": "string or null", "confidence": float, '
                             '"reasoning": "string", "suggested_action": "string"}'
                         )

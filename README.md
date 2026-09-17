@@ -32,12 +32,14 @@ An intelligent WireGuard VPN Gateway and management service designed to monitor 
 ## 🚀 Key Features
 
 - **VPN Gateway Container**: Acts as a dedicated WireGuard gateway for Transmission (`--net=container:torrent-sentinel`), isolating and protecting 100% of swarm traffic.
-- **Local AI Diagnosis**: Uses a local [Ollama](https://ollama.com/) instance to analyze tracker errors, stalled states, and recommend optimal regions for rotation.
-- **Automated VPN Rotation**: Seamlessly rotates through WireGuard profiles to bypass throttled or blocked endpoints without restarting Transmission.
+- **Individual Torrent Boosting**: Automatically detects stalled or 0-seed torrents and injects fresh, verified public trackers (curated from top-tier tracker lists) while forcing tracker & DHT re-announces.
+- **Auto-Repair Engine**: Identifies client-level errors (e.g. file corruption, paused errors) and triggers automatic integrity verification (`recheck`) and resume.
+- **LLM-Judged VPN Rotation**: Uses local [Ollama](https://ollama.com/) to analyze the health of the entire swarm (stuck downloads vs actively downloading torrents and peer saturation). Rather than rotating blindly, Ollama swaps VPN locations only when overall peer connectivity indicates throttled or blacklisted VPN endpoints.
+- **Optional Servarr Auto-Failover**: Correlates Transmission torrents directly with **Sonarr**, **Radarr**, and **Lidarr** queues. Supports manual 1-click or automated failover to blocklist dead releases and trigger replacement searches (`EpisodeSearch`, `MoviesSearch`, `AlbumSearch`).
 - **LAN WebUI Bypass**: Built-in policy routing ensures both Torrent Sentinel (`:8000`) and Transmission (`:9091`) WebUIs remain accessible from your home network.
-- **Intelligent Decision Engine**: Uses a historical "scoreboard" (SQLite) to track which locations provide the best peer counts and download speeds.
-- **Web Dashboard**: Modern, real-time web UI to monitor torrent health, view active transfers, review rotation timelines, and manually trigger rotations.
-- **Anti-Flapping & IP Verification**: Built-in cooldowns, grace periods, and hourly caps prevent tunnel flapping while verifying public IP changes.
+- **Intelligent Scoreboard**: Tracks historical WireGuard endpoint performance in SQLite to prioritize top-scoring locations.
+- **Modern Web Dashboard**: Real-time monitoring of downloads, speeds, seeds/peers, boost states, live action buttons (⚡ Boost, 🔄 Recheck, ❌ Failover), and dual history views (Boost Events & VPN Rotations).
+- **Anti-Flapping & IP Verification**: Cooldowns, grace periods, and hourly caps prevent tunnel flapping while verifying public IP changes.
 - **Notifications**: Integrated support for Discord webhooks and Telegram alerts.
 - **Unraid Ready**: Native Unraid Docker XML template with pre-configured volume paths, WebUI integration, and network parameters.
 

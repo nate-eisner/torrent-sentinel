@@ -63,9 +63,13 @@ class DecisionEngine:
         )
         return True
 
-    async def decide_rotation(self, current_torrents: List[TorrentInfo]) -> Optional[LocationProfile]:
+    async def decide_rotation(
+        self,
+        current_torrents: List[TorrentInfo],
+        stalled_records: Optional[dict] = None
+    ) -> Optional[LocationProfile]:
         logger.debug("DecisionEngine: Checking if rotation is needed for %d torrent(s)...", len(current_torrents))
-        diagnosis = await self.diagnostics.analyze_torrents(current_torrents)
+        diagnosis = await self.diagnostics.analyze_torrents(current_torrents, stalled_records=stalled_records)
 
         if not diagnosis:
             logger.debug("DecisionEngine: No diagnosis returned; torrents are healthy.")
