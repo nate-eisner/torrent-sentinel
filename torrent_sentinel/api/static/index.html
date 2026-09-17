@@ -18,7 +18,7 @@
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans selection:bg-blue-600 selection:text-white">
-    <div id="app" class="container mx-auto px-4 py-8 max-w-7xl">
+    <div id="app" class="w-full max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Toast Notification Area -->
         <div id="toast" class="fixed top-5 right-5 z-50 transform transition-all duration-300 translate-y-[-100px] opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium"></div>
 
@@ -95,32 +95,140 @@
         </div>
 
         <!-- Main Content Area -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Torrents Table (2 Cols) -->
-            <div class="lg:col-span-2 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
-                <div class="p-5 border-b border-slate-800 flex justify-between items-center">
-                    <h2 class="text-lg font-bold flex items-center gap-2.5 text-white">
-                        <i data-lucide="list" class="text-blue-400 w-5 h-5"></i> Managed Downloads
-                    </h2>
-                    <span id="torrent-count-badge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-mono">0 items</span>
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+            <!-- Torrents Table (9 Cols on xl, 8 Cols on lg) -->
+            <div class="lg:col-span-8 xl:col-span-9 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col">
+                <!-- Card Header -->
+                <div class="p-5 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-lg font-bold flex items-center gap-2.5 text-white">
+                            <i data-lucide="list" class="text-blue-400 w-5 h-5"></i> Managed Downloads
+                        </h2>
+                        <span id="torrent-count-badge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono font-medium">0 items</span>
+                        <span id="torrent-filter-badge" class="hidden text-xs px-2.5 py-1 rounded-full bg-blue-900/40 text-blue-300 border border-blue-800/40 font-mono font-semibold"></span>
+                    </div>
+
+                    <!-- Search and Source Filters -->
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <div class="relative flex-1 sm:flex-initial">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            <input 
+                                type="text" 
+                                id="torrent-search-input" 
+                                placeholder="Search title, hash, media..." 
+                                oninput="handleSearch(this.value)"
+                                class="w-full sm:w-64 bg-slate-950/80 border border-slate-700/80 focus:border-blue-500 rounded-xl pl-9 pr-8 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all font-sans"
+                            >
+                            <button 
+                                id="search-clear-btn" 
+                                onclick="clearSearch()" 
+                                title="Clear search"
+                                class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                            >
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+
+                        <!-- Servarr Source Select -->
+                        <div class="flex items-center">
+                            <select 
+                                id="servarr-filter" 
+                                onchange="handleServarrFilter(this.value)"
+                                class="bg-slate-950/80 border border-slate-700/80 text-xs text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
+                            >
+                                <option value="all">All Sources</option>
+                                <option value="sonarr">Sonarr</option>
+                                <option value="radarr">Radarr</option>
+                                <option value="lidarr">Lidarr</option>
+                                <option value="standalone">Standalone (No Servarr)</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Status Filter Pills Bar -->
+                <div class="px-5 py-2.5 bg-slate-950/40 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div class="flex flex-wrap items-center gap-1.5" id="status-pills">
+                        <button onclick="setStatusFilter('all')" id="pill-all" class="px-3 py-1 rounded-lg font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white shadow-sm">
+                            <span>All</span>
+                            <span class="pill-count bg-black/20 text-white px-1.5 py-0.2 rounded-full text-[11px] font-mono">0</span>
+                        </button>
+                        <button onclick="setStatusFilter('attention')" id="pill-attention" class="px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200">
+                            <span class="flex items-center gap-1"><i data-lucide="alert-circle" class="w-3 h-3 text-amber-400"></i> Attention</span>
+                            <span class="pill-count bg-black/20 text-slate-400 px-1.5 py-0.2 rounded-full text-[11px] font-mono">0</span>
+                        </button>
+                        <button onclick="setStatusFilter('downloading')" id="pill-downloading" class="px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200">
+                            <span class="flex items-center gap-1"><i data-lucide="arrow-down-circle" class="w-3 h-3 text-blue-400"></i> Downloading</span>
+                            <span class="pill-count bg-black/20 text-slate-400 px-1.5 py-0.2 rounded-full text-[11px] font-mono">0</span>
+                        </button>
+                        <button onclick="setStatusFilter('boosting')" id="pill-boosting" class="px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200">
+                            <span class="flex items-center gap-1"><i data-lucide="zap" class="w-3 h-3 text-sky-400"></i> Boosting</span>
+                            <span class="pill-count bg-black/20 text-slate-400 px-1.5 py-0.2 rounded-full text-[11px] font-mono">0</span>
+                        </button>
+                        <button onclick="setStatusFilter('completed')" id="pill-completed" class="px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200">
+                            <span class="flex items-center gap-1"><i data-lucide="check-circle" class="w-3 h-3 text-emerald-400"></i> Completed</span>
+                            <span class="pill-count bg-black/20 text-slate-400 px-1.5 py-0.2 rounded-full text-[11px] font-mono">0</span>
+                        </button>
+                    </div>
+
+                    <button id="reset-filters-btn" onclick="resetFilters()" class="hidden text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 py-1 transition-colors">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset Filters
+                    </button>
+                </div>
+
+                <!-- Torrents Table Content -->
                 <div class="overflow-x-auto flex-1">
                     <table class="w-full text-left">
-                        <thead class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-800">
+                        <thead class="bg-slate-950/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-slate-800 select-none">
                             <tr>
-                                <th class="px-5 py-3.5">Torrent / Media</th>
-                                <th class="px-4 py-3.5">Status</th>
-                                <th class="px-4 py-3.5">Progress</th>
-                                <th class="px-4 py-3.5 text-right">DL Speed</th>
-                                <th class="px-4 py-3.5 text-right">Peers</th>
+                                <th class="px-5 py-3.5 cursor-pointer hover:text-white transition-colors group" onclick="toggleSort('name')">
+                                    <div class="flex items-center gap-1.5">
+                                        <span id="th-name-label" class="text-blue-400 font-bold">Torrent / Media</span>
+                                        <span id="sort-icon-name" class="text-blue-400">
+                                            <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
+                                        </span>
+                                    </div>
+                                </th>
+                                <th class="px-4 py-3.5 cursor-pointer hover:text-white transition-colors group" onclick="toggleSort('status')">
+                                    <div class="flex items-center gap-1.5">
+                                        <span id="th-status-label">Status</span>
+                                        <span id="sort-icon-status" class="text-slate-600 group-hover:text-slate-400 transition-colors">
+                                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                        </span>
+                                    </div>
+                                </th>
+                                <th class="px-4 py-3.5 cursor-pointer hover:text-white transition-colors group" onclick="toggleSort('progress')">
+                                    <div class="flex items-center gap-1.5">
+                                        <span id="th-progress-label">Progress</span>
+                                        <span id="sort-icon-progress" class="text-slate-600 group-hover:text-slate-400 transition-colors">
+                                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                        </span>
+                                    </div>
+                                </th>
+                                <th class="px-4 py-3.5 text-right cursor-pointer hover:text-white transition-colors group" onclick="toggleSort('rate_download')">
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        <span id="th-rate_download-label">DL Speed</span>
+                                        <span id="sort-icon-rate_download" class="text-slate-600 group-hover:text-slate-400 transition-colors">
+                                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                        </span>
+                                    </div>
+                                </th>
+                                <th class="px-4 py-3.5 text-right cursor-pointer hover:text-white transition-colors group" onclick="toggleSort('peers')">
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        <span id="th-peers-label">Peers</span>
+                                        <span id="sort-icon-peers" class="text-slate-600 group-hover:text-slate-400 transition-colors">
+                                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+                                        </span>
+                                    </div>
+                                </th>
                                 <th class="px-5 py-3.5 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="torrent-body" class="divide-y divide-slate-800/60 text-sm">
                             <tr>
-                                <td colspan="6" class="px-5 py-10 text-center text-slate-500">
+                                <td colspan="6" class="px-5 py-12 text-center text-slate-500">
                                     <div class="flex flex-col items-center gap-2">
-                                        <i data-lucide="inbox" class="w-8 h-8 stroke-1"></i>
+                                        <i data-lucide="inbox" class="w-10 h-10 stroke-1 text-slate-600"></i>
                                         <span>No torrents found in client.</span>
                                     </div>
                                 </td>
@@ -130,8 +238,8 @@
                 </div>
             </div>
 
-            <!-- Right Sidebar: Tabs for Boost Events & VPN Rotations -->
-            <div class="bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[750px]">
+            <!-- Right Sidebar: Tabs for Boost Events & VPN Rotations (3 Cols on xl, 4 Cols on lg) -->
+            <div class="lg:col-span-4 xl:col-span-3 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[850px] sticky top-6">
                 <div class="p-3 border-b border-slate-800 flex bg-slate-950/50 gap-2">
                     <button id="tab-boost-btn" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow">
                         <i data-lucide="zap" class="w-3.5 h-3.5"></i> Boost Events
@@ -155,6 +263,25 @@
     </div>
 
     <script>
+        // State variables
+        let rawTorrents = [];
+        let currentFilter = 'all'; // 'all' | 'attention' | 'downloading' | 'boosting' | 'completed'
+        let currentServarrFilter = 'all'; // 'all' | 'sonarr' | 'radarr' | 'lidarr' | 'standalone'
+        let currentSearch = '';
+        let sortField = 'name'; // 'name' | 'status' | 'progress' | 'rate_download' | 'peers'
+        let sortDirection = 'asc'; // 'asc' | 'desc'
+
+        const STATUS_SEVERITY_MAP = {
+            'error': 1,
+            'probation_expired': 2,
+            'stalled': 3,
+            'boosting': 4,
+            'revived': 5,
+            'healthy': 6,
+            'failed_over': 7,
+            'completed': 8
+        };
+
         // Tab handling
         let activeTab = 'boost';
         const tabBoostBtn = document.getElementById('tab-boost-btn');
@@ -214,6 +341,321 @@
             return map[state] || `<span class="px-2 py-0.5 rounded text-xs bg-slate-800 text-slate-400">${state}</span>`;
         }
 
+        // Filtering & Searching Handlers
+        function handleSearch(val) {
+            currentSearch = (val || '').trim().toLowerCase();
+            const clearBtn = document.getElementById('search-clear-btn');
+            if (currentSearch) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+            updateResetButtonVisibility();
+            renderTorrentsTable();
+        }
+
+        function clearSearch() {
+            const input = document.getElementById('torrent-search-input');
+            input.value = '';
+            handleSearch('');
+            input.focus();
+        }
+
+        function handleServarrFilter(val) {
+            currentServarrFilter = val;
+            updateResetButtonVisibility();
+            renderTorrentsTable();
+        }
+
+        function setStatusFilter(filter) {
+            currentFilter = filter;
+            const pills = ['all', 'attention', 'downloading', 'boosting', 'completed'];
+            pills.forEach(p => {
+                const btn = document.getElementById(`pill-${p}`);
+                if (!btn) return;
+                const countSpan = btn.querySelector('.pill-count');
+                if (p === filter) {
+                    btn.className = 'px-3 py-1 rounded-lg font-semibold transition-all flex items-center gap-1.5 bg-blue-600 text-white shadow-sm';
+                    if (countSpan) countSpan.className = 'pill-count bg-black/20 text-white px-1.5 py-0.2 rounded-full text-[11px] font-mono';
+                } else {
+                    btn.className = 'px-3 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200';
+                    if (countSpan) countSpan.className = 'pill-count bg-black/20 text-slate-400 px-1.5 py-0.2 rounded-full text-[11px] font-mono';
+                }
+            });
+
+            updateResetButtonVisibility();
+            renderTorrentsTable();
+        }
+
+        function resetFilters() {
+            currentFilter = 'all';
+            currentServarrFilter = 'all';
+            currentSearch = '';
+            const searchInput = document.getElementById('torrent-search-input');
+            if (searchInput) searchInput.value = '';
+            const clearBtn = document.getElementById('search-clear-btn');
+            if (clearBtn) clearBtn.classList.add('hidden');
+            const servarrSelect = document.getElementById('servarr-filter');
+            if (servarrSelect) servarrSelect.value = 'all';
+
+            setStatusFilter('all');
+        }
+
+        function updateResetButtonVisibility() {
+            const resetBtn = document.getElementById('reset-filters-btn');
+            const isFiltered = currentFilter !== 'all' || currentServarrFilter !== 'all' || currentSearch !== '';
+            if (resetBtn) {
+                if (isFiltered) resetBtn.classList.remove('hidden');
+                else resetBtn.classList.add('hidden');
+            }
+        }
+
+        // Sorting Handlers
+        function toggleSort(field) {
+            if (sortField === field) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortField = field;
+                // Numeric metrics default to desc; text & status to asc
+                sortDirection = (field === 'rate_download' || field === 'peers' || field === 'progress') ? 'desc' : 'asc';
+            }
+            updateSortHeaders();
+            renderTorrentsTable();
+        }
+
+        function updateSortHeaders() {
+            const fields = ['name', 'status', 'progress', 'rate_download', 'peers'];
+            fields.forEach(f => {
+                const iconContainer = document.getElementById(`sort-icon-${f}`);
+                const label = document.getElementById(`th-${f}-label`);
+                if (!iconContainer || !label) return;
+
+                if (f === sortField) {
+                    label.className = 'text-blue-400 font-bold';
+                    iconContainer.className = 'text-blue-400';
+                    const iconName = sortDirection === 'asc' ? 'arrow-up' : 'arrow-down';
+                    iconContainer.innerHTML = `<i data-lucide="${iconName}" class="w-3.5 h-3.5"></i>`;
+                } else {
+                    label.className = '';
+                    iconContainer.className = 'text-slate-600 group-hover:text-slate-400 transition-colors';
+                    iconContainer.innerHTML = '<i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>';
+                }
+            });
+            lucide.createIcons();
+        }
+
+        function updatePillCounts(torrents) {
+            const counts = {
+                all: torrents.length,
+                attention: torrents.filter(t => t.boost_state === 'stalled' || t.boost_state === 'probation_expired' || t.boost_state === 'error').length,
+                downloading: torrents.filter(t => t.progress < 1.0 && t.boost_state !== 'completed').length,
+                boosting: torrents.filter(t => t.boost_state === 'boosting').length,
+                completed: torrents.filter(t => t.progress >= 1.0 || t.boost_state === 'completed').length
+            };
+
+            ['all', 'attention', 'downloading', 'boosting', 'completed'].forEach(p => {
+                const btn = document.getElementById(`pill-${p}`);
+                if (!btn) return;
+                const countSpan = btn.querySelector('.pill-count');
+                if (countSpan) countSpan.innerText = counts[p] || 0;
+            });
+        }
+
+        function matchesFilter(t) {
+            // 1. Text search
+            if (currentSearch) {
+                const name = (t.name || '').toLowerCase();
+                const hash = (t.hash || '').toLowerCase();
+                const title = (t.servarr_title || '').toLowerCase();
+                const msg = (t.status_message || '').toLowerCase();
+                const app = (t.servarr_app || '').toLowerCase();
+                if (!name.includes(currentSearch) && !hash.includes(currentSearch) && !title.includes(currentSearch) && !msg.includes(currentSearch) && !app.includes(currentSearch)) {
+                    return false;
+                }
+            }
+
+            // 2. Servarr filter
+            if (currentServarrFilter !== 'all') {
+                if (currentServarrFilter === 'standalone') {
+                    if (t.servarr_app) return false;
+                } else if (t.servarr_app !== currentServarrFilter) {
+                    return false;
+                }
+            }
+
+            // 3. Status filter
+            if (currentFilter === 'attention') {
+                return t.boost_state === 'stalled' || t.boost_state === 'probation_expired' || t.boost_state === 'error';
+            } else if (currentFilter === 'downloading') {
+                return t.progress < 1.0 && t.boost_state !== 'completed';
+            } else if (currentFilter === 'boosting') {
+                return t.boost_state === 'boosting';
+            } else if (currentFilter === 'completed') {
+                return t.progress >= 1.0 || t.boost_state === 'completed';
+            }
+
+            return true;
+        }
+
+        function sortTorrents(list) {
+            return [...list].sort((a, b) => {
+                let valA, valB;
+                if (sortField === 'name') {
+                    valA = (a.name || '').toLowerCase();
+                    valB = (b.name || '').toLowerCase();
+                    return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else if (sortField === 'status') {
+                    valA = STATUS_SEVERITY_MAP[a.boost_state] || 99;
+                    valB = STATUS_SEVERITY_MAP[b.boost_state] || 99;
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                } else if (sortField === 'progress') {
+                    valA = a.progress || 0;
+                    valB = b.progress || 0;
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                } else if (sortField === 'rate_download') {
+                    valA = a.rate_download || 0;
+                    valB = b.rate_download || 0;
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                } else if (sortField === 'peers') {
+                    valA = (a.num_seeds || 0) * 1000 + (a.peers_connected || 0);
+                    valB = (b.num_seeds || 0) * 1000 + (b.peers_connected || 0);
+                    return sortDirection === 'asc' ? valA - valB : valB - valA;
+                }
+                return 0;
+            });
+        }
+
+        function renderTorrentsTable() {
+            const tbody = document.getElementById('torrent-body');
+            if (!tbody) return;
+
+            // Update item count badges
+            document.getElementById('torrent-count-badge').innerText = `${rawTorrents.length} items`;
+            const filterBadge = document.getElementById('torrent-filter-badge');
+
+            if (rawTorrents.length === 0) {
+                filterBadge.classList.add('hidden');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-5 py-12 text-center text-slate-500">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="inbox" class="w-10 h-10 stroke-1 text-slate-600"></i>
+                                <span class="font-medium text-slate-300">No active torrents in Transmission.</span>
+                                <span class="text-xs text-slate-500">Downloads will appear here automatically when queued.</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            const filtered = rawTorrents.filter(matchesFilter);
+            const sorted = sortTorrents(filtered);
+
+            if (filtered.length !== rawTorrents.length) {
+                filterBadge.innerText = `Showing ${filtered.length} of ${rawTorrents.length}`;
+                filterBadge.classList.remove('hidden');
+            } else {
+                filterBadge.classList.add('hidden');
+            }
+
+            if (sorted.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-5 py-12 text-center text-slate-500">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="filter-x" class="w-10 h-10 stroke-1 text-slate-600"></i>
+                                <span class="font-medium text-slate-300">No torrents match your current filter or search.</span>
+                                <button onclick="resetFilters()" class="mt-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30">
+                                    Reset Filters
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            tbody.innerHTML = sorted.map(t => {
+                const progPct = (t.progress * 100.0).toFixed(1);
+                const shortHash = t.hash ? t.hash.substring(0, 8) : t.id;
+                
+                const servarrBadge = t.servarr_app ? `
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800/40">
+                        <i data-lucide="link" class="w-2.5 h-2.5"></i> ${t.servarr_app}: ${t.servarr_title || 'Linked'}
+                    </span>
+                ` : '';
+
+                const privateBadge = t.is_private ? `
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-800/40" title="Private Torrent - Public tracker injection blocked for swarm safety">
+                        <i data-lucide="lock" class="w-2.5 h-2.5"></i> Private
+                    </span>
+                ` : '';
+
+                const boostActionBtn = t.is_private ? `
+                    <button disabled title="Private swarm - tracker boosting disabled for tracker rules protection" class="p-1.5 rounded-lg bg-slate-800/40 text-slate-600 cursor-not-allowed border border-slate-800">
+                        <i data-lucide="shield" class="w-4 h-4"></i>
+                    </button>
+                ` : `
+                    <button onclick="boostTorrent('${t.id}')" title="Inject verified public trackers & re-announce" class="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white transition-all border border-blue-500/20 active:scale-95">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                    </button>
+                `;
+
+                return `
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="px-5 py-4">
+                            <div class="font-semibold text-white max-w-md lg:max-w-xl xl:max-w-2xl truncate" title="${t.name}">
+                                ${t.name}
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 mt-1.5">
+                                <span class="text-[11px] font-mono text-slate-500">#${shortHash}</span>
+                                ${privateBadge}
+                                ${servarrBadge}
+                            </div>
+                        </td>
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            ${renderBoostState(t.boost_state)}
+                            <div class="text-[11px] text-slate-500 mt-1 max-w-[150px] truncate" title="${t.status_message}">
+                                ${t.status_message}
+                            </div>
+                        </td>
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            <div class="flex items-center gap-2">
+                                <div class="w-24 sm:w-28 bg-slate-800 rounded-full h-2 overflow-hidden">
+                                    <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: ${progPct}%"></div>
+                                </div>
+                                <span class="text-xs font-mono font-medium text-slate-400">${progPct}%</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-4 text-right whitespace-nowrap">
+                            <div class="font-mono text-xs font-bold text-white">${formatSpeed(t.rate_download)}</div>
+                            <div class="font-mono text-[11px] text-slate-500">▲ ${formatSpeed(t.rate_upload)}</div>
+                        </td>
+                        <td class="px-4 py-4 text-right whitespace-nowrap font-mono text-xs">
+                            <span class="${t.num_seeds > 0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${t.num_seeds} seeds</span>
+                            <div class="text-[11px] text-slate-500">${t.peers_connected} peers</div>
+                        </td>
+                        <td class="px-5 py-4 whitespace-nowrap text-center">
+                            <div class="flex items-center justify-center gap-1.5">
+                                ${boostActionBtn}
+                                <button onclick="recheckTorrent('${t.id}')" title="Force integrity verification & resume" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all border border-slate-700 active:scale-95">
+                                    <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="failoverTorrent('${t.id}', '${t.name.replace(/'/g, "\\'")}')" title="Blocklist release & search replacement" class="p-1.5 rounded-lg bg-red-950/40 text-red-400 hover:bg-red-600 hover:text-white transition-all border border-red-800/30 active:scale-95">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
         async function fetchData() {
             try {
                 // 1. System Status
@@ -221,7 +663,7 @@
                 const status = await statusRes.json();
 
                 document.getElementById('stat-torrents').innerText = status.active_torrents;
-                document.getElementById('torrent-count-badge').innerText = `${status.active_torrents} items`;
+                document.getElementById('stat-location').innerText = status.current_location || 'Unknown';
                 const healthy = status.healthy_trackers_count !== undefined ? status.healthy_trackers_count : status.cached_trackers_count;
                 const total = status.cached_trackers_count || 0;
                 document.getElementById('stat-trackers').innerText = `${healthy} / ${total}`;
@@ -251,82 +693,13 @@
                 // 2. Torrents Queue
                 const torrentRes = await fetch('/api/torrents');
                 const torrents = await torrentRes.json();
-                const tbody = document.getElementById('torrent-body');
+                rawTorrents = torrents;
 
                 const stalledCount = torrents.filter(t => t.boost_state === 'stalled' || t.boost_state === 'probation_expired' || t.boost_state === 'error').length;
                 document.getElementById('stat-stalled-sub').innerText = `${stalledCount} need attention`;
 
-                if (torrents.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="6" class="px-5 py-10 text-center text-slate-500">
-                                <div class="flex flex-col items-center gap-2">
-                                    <i data-lucide="inbox" class="w-8 h-8 stroke-1"></i>
-                                    <span>No active torrents in Transmission.</span>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                } else {
-                    tbody.innerHTML = torrents.map(t => {
-                        const progPct = (t.progress * 100.0).toFixed(1);
-                        const shortHash = t.hash ? t.hash.substring(0, 8) : t.id;
-                        const servarrBadge = t.servarr_app ? `
-                            <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800/40">
-                                <i data-lucide="link" class="w-2.5 h-2.5"></i> ${t.servarr_app}: ${t.servarr_title || 'Linked'}
-                            </span>
-                        ` : '';
-
-                        return `
-                            <tr class="hover:bg-slate-800/30 transition-colors">
-                                <td class="px-5 py-4">
-                                    <div class="font-semibold text-white max-w-sm sm:max-w-md truncate" title="${t.name}">
-                                        ${t.name}
-                                    </div>
-                                    <div class="flex items-center gap-2 mt-1">
-                                        <span class="text-[11px] font-mono text-slate-500">#${shortHash}</span>
-                                        ${servarrBadge}
-                                    </div>
-                                </td>
-                                <td class="px-4 py-4 whitespace-nowrap">
-                                    ${renderBoostState(t.boost_state)}
-                                    <div class="text-[11px] text-slate-500 mt-1 max-w-[150px] truncate" title="${t.status_message}">
-                                        ${t.status_message}
-                                    </div>
-                                </td>
-                                <td class="px-4 py-4 whitespace-nowrap">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-24 bg-slate-800 rounded-full h-2 overflow-hidden">
-                                            <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: ${progPct}%"></div>
-                                        </div>
-                                        <span class="text-xs font-mono font-medium text-slate-400">${progPct}%</span>
-                                    </div>
-                                </td>
-                                <td class="px-4 py-4 text-right whitespace-nowrap">
-                                    <div class="font-mono text-xs font-bold text-white">${formatSpeed(t.rate_download)}</div>
-                                    <div class="font-mono text-[11px] text-slate-500">▲ ${formatSpeed(t.rate_upload)}</div>
-                                </td>
-                                <td class="px-4 py-4 text-right whitespace-nowrap font-mono text-xs">
-                                    <span class="${t.num_seeds > 0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${t.num_seeds} seeds</span>
-                                    <div class="text-[11px] text-slate-500">${t.peers_connected} peers</div>
-                                </td>
-                                <td class="px-5 py-4 whitespace-nowrap text-center">
-                                    <div class="flex items-center justify-center gap-1.5">
-                                        <button onclick="boostTorrent('${t.id}')" title="Inject verified public trackers & re-announce" class="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white transition-all border border-blue-500/20">
-                                            <i data-lucide="zap" class="w-4 h-4"></i>
-                                        </button>
-                                        <button onclick="recheckTorrent('${t.id}')" title="Force integrity verification & resume" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all border border-slate-700">
-                                            <i data-lucide="rotate-cw" class="w-4 h-4"></i>
-                                        </button>
-                                        <button onclick="failoverTorrent('${t.id}', '${t.name.replace(/'/g, "\\'")}')" title="Blocklist release & search replacement" class="p-1.5 rounded-lg bg-red-950/40 text-red-400 hover:bg-red-600 hover:text-white transition-all border border-red-800/30">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
-                }
+                updatePillCounts(rawTorrents);
+                renderTorrentsTable();
 
                 // 3. Boost History
                 const boostRes = await fetch('/api/boost-history');

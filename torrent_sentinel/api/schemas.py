@@ -23,6 +23,7 @@ class TorrentStatus(BaseModel):
     first_stalled_at: Optional[datetime] = None
     boosted_at: Optional[datetime] = None
     grace_period_expires_at: Optional[datetime] = None
+    is_private: bool = False
 
 class BoostEventSummary(BaseModel):
     id: str

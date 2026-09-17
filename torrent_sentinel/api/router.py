@@ -123,7 +123,8 @@ async def get_torrents():
                     servarr_queue_id=u.servarr_queue_id,
                     first_stalled_at=u.first_stalled_at,
                     boosted_at=u.boosted_at,
-                    grace_period_expires_at=u.grace_period_expires_at
+                    grace_period_expires_at=u.grace_period_expires_at,
+                    is_private=u.is_private
                 ) for u in unified
             ]
 
@@ -142,7 +143,8 @@ async def get_torrents():
                 peers_sending_to_us=t.peers_sending_to_us,
                 num_seeds=t.peers_sending_to_us,
                 num_leechs=max(t.peers_connected - t.peers_sending_to_us, 0),
-                error=(t.error_string or f"Error {t.error}") if (t.error is not None and t.error != 0 and str(t.error) != "0") else None
+                error=(t.error_string or f"Error {t.error}") if (t.error is not None and t.error != 0 and str(t.error) != "0") else None,
+                is_private=getattr(t, "is_private", False)
             ) for t in torrents
         ]
     except Exception as e:

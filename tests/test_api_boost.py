@@ -96,3 +96,38 @@ def test_api_trackers_refresh_endpoint(client):
         resp = client.post("/api/trackers/refresh")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
+
+def test_serve_index_html(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    content = resp.text
+    assert "Torrent Sentinel" in content
+    assert "torrent-search-input" in content
+    assert "status-pills" in content
+    assert "max-w-[1720px]" in content
+
+def test_api_torrents_is_private_field(client):
+    mock_item = UnifiedTorrentItem(
+        id="99",
+        hash="priv1234",
+        name="Private Item",
+        status="downloading",
+        progress=0.10,
+        rate_download=50000.0,
+        rate_upload=10000.0,
+        peers_connected=5,
+        peers_sending_to_us=2,
+        num_seeds=2,
+        num_leechs=3,
+        boost_state=BoostState.HEALTHY,
+        status_message="Healthy swarm",
+        is_private=True
+    )
+    with patch("torrent_sentinel.api.router.daemon_instance") as mock_daemon:
+        mock_daemon.booster.get_unified_queue = AsyncMock(return_value=[mock_item])
+        resp = client.get("/api/torrents")
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["is_private"] is True

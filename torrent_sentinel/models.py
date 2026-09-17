@@ -103,6 +103,7 @@ class UnifiedTorrentItem(BaseModel):
     servarr_title: Optional[str] = None
     servarr_queue_id: Optional[int] = None
     is_errored: bool = False
+    is_private: bool = False
 
 class OllamaDiagnosis(BaseModel):
     should_rotate: bool

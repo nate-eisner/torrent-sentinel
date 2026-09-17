@@ -184,7 +184,8 @@ class TorrentBooster:
                 servarr_app=servarr_app,
                 servarr_title=servarr_title,
                 servarr_queue_id=servarr_queue_id,
-                is_errored=client_is_errored
+                is_errored=client_is_errored,
+                is_private=getattr(t, "is_private", False)
             ))
 
         return unified_list
