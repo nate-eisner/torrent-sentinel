@@ -4,19 +4,29 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (build-essential for C extensions, wireguard-tools and iproute2 for WireGuard management)
+# Install system dependencies:
+# - build-essential for C-based Python packages
+# - wireguard-tools, iproute2, iptables for WireGuard management
+# - procps for sysctl utility
+# - openresolv for WireGuard DNS management (resolvconf)
+# - curl for healthchecks/utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wireguard-tools \
     iproute2 \
     iptables \
+    procps \
+    openresolv \
     curl \
-    && echo '#!/bin/sh\necho "nameserver 1.1.1.1" > /etc/resolv.conf' > /usr/bin/resolvconf && chmod +x /usr/bin/resolvconf \
-    # FIX_VERIFIED
     && rm -rf /var/lib/apt/lists/*
 
+# Create a robust sysctl wrapper in /usr/local/bin so wg-quick never fails
+# when setting net.ipv4.conf.all.src_valid_mark in Docker environments
+RUN printf '#!/bin/sh\nif [ -x /sbin/sysctl ]; then\n    /sbin/sysctl "$@" 2>/dev/null || {\n        case "$*" in\n            *src_valid_mark*) exit 0 ;;\n            *) exit $? ;;\n        esac\n    }\nelse\n    exit 0\nfi\n' > /usr/local/bin/sysctl \
+    && chmod +x /usr/local/bin/sysctl
+
 # Copy dependency files first to leverage Docker layer cache
-COPY pyproject.toml poetry.lock* ./
+COPY pyproject.toml poetry.lock ./
 
 # Install Poetry and dependencies (skipping root package until source is copied)
 RUN pip install --no-cache-dir poetry && \
@@ -35,7 +45,7 @@ RUN mkdir -p /app/logs /app/data /app/vpn_configs
 # Expose API/WebUI port
 EXPOSE 8000
 
-# Set the entrypoint to our CLI
+# Set the entrypoint directly to our CLI
 ENTRYPOINT ["torrent-sentinel"]
 
 # Default command (can be overridden)

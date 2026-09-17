@@ -73,7 +73,7 @@ Torrent Sentinel provides a native Unraid template: [`torrent-sentinel.xml`](./t
    - **WebUI Port**: `8000` (click the container icon &rarr; **WebUI**)
    - **App Data Directory**: `/mnt/user/appdata/torrent-sentinel/data` &rarr; `/app/data` (for `sentinel.db`)
    - **VPN Configs Directory**: `/mnt/user/appdata/torrent-sentinel/vpn_configs` &rarr; `/app/vpn_configs`
-   - **Extra Parameters**: `--cap-add=NET_ADMIN` (required for WireGuard tunnel switching)
+   - **Extra Parameters**: `--cap-add=NET_ADMIN --sysctl net.ipv4.conf.all.src_valid_mark=1` (required for WireGuard tunnel switching)
 5. Fill in your **Transmission IP** (`SENTINEL_TRANSMISSION_HOST`) and **Ollama URL** (`SENTINEL_OLLAMA_BASE_URL`), then click **Apply**.
 
 #### Method B: Template Repository URL
@@ -107,6 +107,8 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
     ports:
       - "8000:8000"
     environment:

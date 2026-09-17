@@ -14,7 +14,7 @@
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/nate-eisner/torrent-sentinel/main/torrent-sentinel.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/nate-eisner/torrent-sentinel/main/assets/logo.png</Icon>
-  <ExtraParams>--cap-add=NET_ADMIN</ExtraParams>
+  <ExtraParams>--cap-add=NET_ADMIN --sysctl net.ipv4.conf.all.src_valid_mark=1</ExtraParams>
   <PostArgs></PostArgs>
   <CPUset></CPUset>
   <DateInstalled></DateInstalled>

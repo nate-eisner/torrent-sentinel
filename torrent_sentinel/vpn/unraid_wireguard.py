@@ -51,13 +51,17 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
     async def rotate_to(self, profile: LocationProfile) -> bool:
         logger.info("Starting WireGuard rotation to profile '%s' (%s)...", profile.name, profile.config_file)
         try:
-            # 1. Stop current tunnel
-            logger.debug("Tearing down existing WireGuard interface: wg-quick down %s", self.interface)
-            down_res = subprocess.run(["wg-quick", "down", self.interface], capture_output=True, text=True)
-            if down_res.returncode == 0:
-                logger.debug("wg-quick down %s succeeded", self.interface)
-            else:
-                logger.debug("wg-quick down %s completed with exit code %d (may already be down): %s", self.interface, down_res.returncode, down_res.stderr.strip())
+            # 1. Stop current/previous tunnels
+            if self._current_profile and self._current_profile.config_file != profile.config_file:
+                logger.debug("Tearing down previous WireGuard profile: %s", self._current_profile.config_file)
+                subprocess.run(["wg-quick", "down", self._current_profile.config_file], capture_output=True, text=True)
+
+            if self.interface:
+                logger.debug("Tearing down configured interface: %s", self.interface)
+                subprocess.run(["wg-quick", "down", self.interface], capture_output=True, text=True)
+
+            # Ensure target config interface is not already partially up
+            subprocess.run(["wg-quick", "down", profile.config_file], capture_output=True, text=True)
 
             # 2. Copy new config to active location if specified
             if self.active_config_path and self.active_config_path != profile.config_file:
@@ -68,7 +72,13 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
                 except Exception as copy_err:
                     logger.warning("Could not copy config to active path %s: %s", self.active_config_path, copy_err)
 
-            # 3. Bring up new tunnel
+            # 3. Secure file permissions if possible to silence warning
+            try:
+                os.chmod(profile.config_file, 0o600)
+            except Exception:
+                pass
+
+            # 4. Bring up new tunnel
             target_conf = profile.config_file
             logger.info("Bringing up WireGuard tunnel with profile: %s", target_conf)
             result = subprocess.run(["wg-quick", "up", target_conf], capture_output=True, text=True)
