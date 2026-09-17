@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Optional
 
+import httpx
+
 from torrent_sentinel.config import settings
 from torrent_sentinel.clients.transmission import TransmissionClient
 from torrent_sentinel.clients.ollama import OllamaClient
@@ -67,7 +69,16 @@ class SentinelDaemon:
             logger.info("--- Monitoring Cycle #%d ---", cycle)
             try:
                 # 1. Monitor
-                torrents = await self.transmission.get_torrents()
+                try:
+                    torrents = await self.transmission.get_torrents()
+                except (httpx.ConnectError, httpx.TimeoutException) as conn_err:
+                    logger.warning(
+                        "Cycle #%d: Transmission unreachable at %s (%s). Waiting for Transmission to start or verify connection settings...",
+                        cycle, self.transmission.base_url, type(conn_err).__name__
+                    )
+                    await asyncio.sleep(15)
+                    continue
+
                 current_profile = await self.vpn_adapter.get_current_profile()
                 current_loc_name = current_profile.name if current_profile else "Unknown / Default"
                 

@@ -107,3 +107,25 @@ async def test_daemon_startup_initializes_vpn(tmp_path):
                     await daemon.run()
 
     adapter.rotate_to.assert_called_once_with(mock_profile)
+
+@pytest.mark.asyncio
+async def test_daemon_handles_transmission_connect_error(tmp_path, caplog):
+    import httpx
+    adapter = AsyncMock(spec=UnraidWireGuardAdapter)
+    adapter.get_available_locations.return_value = []
+    adapter.get_current_profile.return_value = None
+
+    daemon = SentinelDaemon(adapter)
+    db_file = tmp_path / "test_sentinel_conn_err.db"
+    daemon.storage = Storage(str(db_file))
+
+    async def stop_after_cycle(*args, **kwargs):
+        daemon.stop()
+
+    with patch.object(daemon.ollama, "health_check", AsyncMock(return_value=True)):
+        with patch.object(daemon.transmission, "get_torrents", AsyncMock(side_effect=httpx.ConnectError("Connection refused"))):
+            with patch("asyncio.sleep", AsyncMock(side_effect=stop_after_cycle)):
+                await daemon.run()
+
+    # Daemon handled the error gracefully without bubbling up an exception
+    assert "Transmission unreachable" in caplog.text
