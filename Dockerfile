@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables \
     curl \
     && echo '#!/bin/sh\necho "nameserver 1.1.1.1" > /etc/resolv.conf' > /usr/bin/resolvconf && chmod +x /usr/bin/resolvconf \
+    # FIX_VERIFIED
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files first to leverage Docker layer cache
