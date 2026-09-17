@@ -76,10 +76,12 @@
             <div class="bg-slate-900/80 backdrop-blur p-5 rounded-2xl border border-slate-800 shadow-xl">
                 <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">
                     <span>Verified Trackers</span>
-                    <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+                    <button id="refresh-trackers-btn" onclick="refreshTrackers()" title="Refresh & probe all public trackers" class="p-1 rounded bg-slate-800 hover:bg-amber-500/20 hover:text-amber-400 text-slate-400 transition-all">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
                 </div>
                 <div id="stat-trackers" class="text-3xl font-black text-amber-400">0</div>
-                <div class="text-xs text-slate-400 mt-1">Cached for boosting</div>
+                <div id="stat-trackers-sub" class="text-xs text-slate-400 mt-1">Checking health...</div>
             </div>
 
             <div class="bg-slate-900/80 backdrop-blur p-5 rounded-2xl border border-slate-800 shadow-xl">
@@ -220,8 +222,11 @@
 
                 document.getElementById('stat-torrents').innerText = status.active_torrents;
                 document.getElementById('torrent-count-badge').innerText = `${status.active_torrents} items`;
-                document.getElementById('stat-location').innerText = status.current_location || 'Unknown';
-                document.getElementById('stat-trackers').innerText = status.cached_trackers_count || '0';
+                const healthy = status.healthy_trackers_count !== undefined ? status.healthy_trackers_count : status.cached_trackers_count;
+                const total = status.cached_trackers_count || 0;
+                document.getElementById('stat-trackers').innerText = `${healthy} / ${total}`;
+                const trackersSub = document.getElementById('stat-trackers-sub');
+                if (trackersSub) trackersSub.innerText = `${healthy} online & verified`;
 
                 const badge = document.getElementById('status-badge');
                 if (status.daemon_running) {
@@ -457,6 +462,25 @@
                 }, 3000);
             }
         });
+
+        // Refresh & Probe Trackers
+        async function refreshTrackers() {
+            const btn = document.getElementById('refresh-trackers-btn');
+            if (btn) btn.classList.add('animate-spin');
+            try {
+                showToast('🔄 Refreshing and probing public trackers in background...');
+                const res = await fetch('/api/trackers/refresh', { method: 'POST' });
+                if (res.ok) {
+                    setTimeout(fetchData, 2000);
+                } else {
+                    showToast('Failed to trigger tracker refresh', true);
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, true);
+            } finally {
+                if (btn) setTimeout(() => btn.classList.remove('animate-spin'), 1500);
+            }
+        }
 
         // Initial setup and polling loop
         fetchData();

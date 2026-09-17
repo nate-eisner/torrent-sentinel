@@ -213,3 +213,44 @@ async def test_booster_manual_actions(booster):
     ok = await booster.manual_reannounce("40")
     assert ok is True
     booster.transmission.reannounce_torrents.assert_called_with(["40"])
+
+@pytest.mark.asyncio
+async def test_booster_private_torrent_safety(booster):
+    private_torrent = TorrentInfo(
+        id="50",
+        hashString="private123",
+        name="Private Tracked Release",
+        status="downloading",
+        percentDone=0.1,
+        rateDownload=0.0,
+        rateUpload=0.0,
+        peersConnected=0,
+        peersSendingToUs=0,
+        isPrivate=True,
+        trackerStats=[{
+            "announce": "udp://private.tracker.org:1337/announce",
+            "lastAnnounceSucceeded": True,
+            "lastAnnouncePeerCount": 5
+        }]
+    )
+
+    # 1. First cycle: stalled detection
+    await booster.run_cycle([private_torrent])
+    booster.trackers.record_transmission_stats.assert_called_once()
+
+    rec = booster.stalled_records.get("private123")
+    assert rec is not None
+    rec.first_stalled_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    # Reset mock tracker call count
+    booster.transmission.add_trackers.reset_mock()
+
+    # 2. Cycle 2: Stage 1 boost should skip private torrent
+    await booster.run_cycle([private_torrent])
+    booster.transmission.add_trackers.assert_not_called()
+
+    # 3. Manual boost should abort for private torrent
+    booster.transmission.get_torrents.return_value = [private_torrent]
+    boost_ok = await booster.manual_boost("50")
+    assert boost_ok is False
+    booster.transmission.add_trackers.assert_not_called()

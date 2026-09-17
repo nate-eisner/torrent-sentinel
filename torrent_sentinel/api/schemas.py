@@ -56,6 +56,7 @@ class SystemStatus(BaseModel):
     auto_failover_enabled: bool = False
     auto_vpn_rotation_enabled: bool = True
     cached_trackers_count: int = 0
+    healthy_trackers_count: int = 0
 
 class AutoFailoverToggleRequest(BaseModel):
     enabled: bool

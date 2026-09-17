@@ -200,6 +200,11 @@ class TorrentBooster:
 
         min_rate_bytes = settings.MIN_DOWNLOAD_RATE_KBPS * 1024.0
 
+        # Record Transmission trackerStats into TrackerService for real-world health auditing
+        for t in torrents:
+            if getattr(t, "tracker_stats", None):
+                self.trackers.record_transmission_stats(t.tracker_stats)
+
         for t in torrents:
             t_key = t.hash.lower() if t.hash else t.id
             active_keys.add(t_key)
@@ -247,7 +252,7 @@ class TorrentBooster:
                 continue
 
             # 3. Check Cadence Auto-Boost
-            if settings.AUTO_BOOST_CADENCE_MINUTES > 0 and t.progress < 1.0:
+            if not getattr(t, "is_private", False) and settings.AUTO_BOOST_CADENCE_MINUTES > 0 and t.progress < 1.0:
                 last_boost = self.last_cadence_boost.get(t_key)
                 if last_boost is None:
                     self.last_cadence_boost[t_key] = now
@@ -347,6 +352,11 @@ class TorrentBooster:
 
     async def _execute_stage_1_boost(self, t: TorrentInfo, rec: StalledRecord):
         """Inject verified public trackers and force re-announce."""
+        if getattr(t, "is_private", False):
+            logger.info("[Stage 1 Boost] Skipping boost for '%s' (#%s): marked PRIVATE.", t.name, t.id)
+            rec.status_message = "Private torrent; public tracker injection skipped."
+            return
+
         trackers = self.trackers.get_trackers()
         logger.info("[Stage 1 Boost] Injecting %d verified trackers into '%s' (#%s)...", len(trackers), t.name, t.id)
 
@@ -409,6 +419,10 @@ class TorrentBooster:
         torrents = await self.transmission.get_torrents()
         target = next((t for t in torrents if t.id == identifier or t.hash.lower() == identifier.lower()), None)
         if not target:
+            return False
+
+        if getattr(target, "is_private", False):
+            logger.warning("Manual boost aborted: Torrent '%s' (#%s) is marked PRIVATE.", target.name, target.id)
             return False
 
         t_key = target.hash.lower() if target.hash else target.id

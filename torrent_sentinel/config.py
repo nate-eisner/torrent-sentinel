@@ -50,6 +50,10 @@ class Settings(BaseSettings):
         "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all_udp.txt",
         "https://newtrackon.com/api/stable"
     ]
+    TRACKER_REFRESH_INTERVAL_HOURS: int = 12
+    TRACKER_PROBE_ENABLED: bool = True
+    TRACKER_PROBE_TIMEOUT_SECONDS: float = 3.0
+    TRACKER_MAX_CONCURRENT_PROBES: int = 25
 
     # Servarr Settings (Sonarr, Radarr, Lidarr)
     SONARR_URL: Optional[str] = None

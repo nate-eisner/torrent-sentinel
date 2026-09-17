@@ -54,6 +54,7 @@ async def get_status():
     last_rot_time = None
     auto_failover = settings.AUTO_FAILOVER_ENABLED
     cached_trackers = 0
+    healthy_trackers = 0
 
     try:
         if daemon_instance:
@@ -62,7 +63,18 @@ async def get_status():
                 if profile:
                     current_loc = profile.name
             auto_failover = await daemon_instance.booster.is_auto_failover_enabled()
-            cached_trackers = len(daemon_instance.tracker_service.get_trackers())
+            if daemon_instance.tracker_service:
+                trackers = daemon_instance.tracker_service.get_trackers()
+                cached_trackers = len(trackers)
+                healthy_trackers = len(trackers)
+                if hasattr(daemon_instance.tracker_service, "get_health_summary"):
+                    try:
+                        summary = daemon_instance.tracker_service.get_health_summary()
+                        if isinstance(summary, dict) and "total_discovered" in summary:
+                            cached_trackers = summary.get("total_discovered", len(trackers))
+                            healthy_trackers = summary.get("healthy_count", len(trackers))
+                    except Exception:
+                        pass
     except Exception as e:
         logger.debug("API get_status: Error reading daemon state: %s", e)
 
@@ -81,7 +93,8 @@ async def get_status():
         boost_enabled=settings.BOOST_ENABLED,
         auto_failover_enabled=auto_failover,
         auto_vpn_rotation_enabled=settings.AUTO_VPN_ROTATION_ENABLED,
-        cached_trackers_count=cached_trackers
+        cached_trackers_count=cached_trackers,
+        healthy_trackers_count=healthy_trackers
     )
 
 @app.get("/api/torrents", response_model=List[TorrentStatus])
@@ -202,13 +215,35 @@ async def get_boost_history():
 @app.get("/api/trackers")
 async def get_trackers():
     trackers = []
+    summary = {}
     if daemon_instance and daemon_instance.tracker_service:
         trackers = daemon_instance.tracker_service.get_trackers()
+        if hasattr(daemon_instance.tracker_service, "get_health_summary"):
+            try:
+                s = daemon_instance.tracker_service.get_health_summary()
+                if isinstance(s, dict):
+                    summary = s
+            except Exception:
+                pass
     return {
         "status": "success",
-        "total": len(trackers),
+        "total": summary.get("total_discovered", len(trackers)),
+        "healthy_count": summary.get("healthy_count", len(trackers)),
+        "last_refreshed": summary.get("last_refreshed"),
+        "last_probed": summary.get("last_probed"),
         "trackers": trackers,
+        "health_details": summary.get("trackers", []),
         "sources": settings.TRACKER_LIST_URLS
+    }
+
+@app.post("/api/trackers/refresh")
+async def refresh_trackers(background_tasks: BackgroundTasks):
+    if not daemon_instance or not daemon_instance.tracker_service:
+        raise HTTPException(status_code=503, detail="Sentinel daemon tracker service is not active.")
+    background_tasks.add_task(daemon_instance.tracker_service.refresh_trackers, probe=True)
+    return {
+        "status": "success",
+        "message": "Tracker refresh and probe initiated in background."
     }
 
 @app.get("/api/history", response_model=List[RotationEventSummary])

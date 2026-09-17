@@ -75,7 +75,8 @@ class TransmissionClient:
                     "id", "hashString", "name", "status", "percentDone",
                     "rateDownload", "rateUpload",
                     "peersConnected", "peersSendingToUs", "peersGettingFromUs",
-                    "eta", "error", "errorString", "addedDate", "labels"
+                    "eta", "error", "errorString", "addedDate", "labels",
+                    "isPrivate", "trackerStats"
                 ]
             }
         }
@@ -103,7 +104,9 @@ class TransmissionClient:
                 error=t.get("error"),
                 errorString=t.get("errorString"),
                 addedDate=int(t.get("addedDate", 0)),
-                labels=labels
+                labels=labels,
+                is_private=bool(t.get("isPrivate", False)),
+                tracker_stats=t.get("trackerStats") or []
             ))
 
         logger.info("Retrieved %d torrent(s) from Transmission", len(torrents))

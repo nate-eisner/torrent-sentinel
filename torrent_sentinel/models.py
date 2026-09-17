@@ -36,6 +36,8 @@ class TorrentInfo(BaseModel):
     error_string: Optional[str] = Field(None, alias="errorString")
     added_on: int = Field(default=0, alias="addedDate")
     labels: List[str] = Field(default_factory=list)
+    is_private: bool = Field(default=False, alias="isPrivate")
+    tracker_stats: List[Dict[str, Any]] = Field(default_factory=list, alias="trackerStats")
 
 class TrackerInfo(BaseModel):
     announce_url: str
@@ -43,6 +45,14 @@ class TrackerInfo(BaseModel):
     last_announce_result: Optional[str] = None
     last_announce_succeeded: bool
     last_announce_peer_count: int
+
+class TrackerHealth(BaseModel):
+    url: str
+    is_alive: bool = True
+    latency_ms: Optional[float] = None
+    last_checked: Optional[datetime] = None
+    status: str = "Unknown"
+    peers_seen: int = 0
 
 class ServarrQueueItem(BaseModel):
     id: int

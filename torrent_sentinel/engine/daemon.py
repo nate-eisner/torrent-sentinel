@@ -102,7 +102,12 @@ class SentinelDaemon:
                     cycle, len(torrents), current_loc_name
                 )
 
-                # 2. Boost stuck torrents
+                # 2. Check periodic tracker refresh
+                if settings.BOOST_ENABLED and self.tracker_service.should_refresh(settings.TRACKER_REFRESH_INTERVAL_HOURS):
+                    logger.info("Cycle #%d: Tracker refresh interval reached (%dh). Refreshing and probing in background...", cycle, settings.TRACKER_REFRESH_INTERVAL_HOURS)
+                    asyncio.create_task(self.tracker_service.refresh_trackers())
+
+                # 3. Boost stuck torrents
                 if settings.BOOST_ENABLED:
                     await self.booster.run_cycle(torrents)
 

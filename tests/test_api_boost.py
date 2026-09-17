@@ -89,3 +89,10 @@ def test_api_trackers_endpoint(client):
         data = resp.json()
         assert data["total"] == 2
         assert len(data["trackers"]) == 2
+
+def test_api_trackers_refresh_endpoint(client):
+    with patch("torrent_sentinel.api.router.daemon_instance") as mock_daemon:
+        mock_daemon.tracker_service.refresh_trackers = AsyncMock(return_value=["udp://t1.org:1337"])
+        resp = client.post("/api/trackers/refresh")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
