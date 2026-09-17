@@ -45,6 +45,48 @@ An intelligent WireGuard VPN Gateway and management service designed to monitor 
 
 ---
 
+## 🎯 Stalled Torrent Boosting & Rescue Pipeline
+
+Torrent Sentinel employs a continuous **two-stage rescue and recovery pipeline** combined with **LLM-evaluated VPN rotation**:
+
+```
+                  [ Torrent Stalled in Transmission (0 seeds / slow) ]
+                                         │
+                                         ▼
+                           ┌─────────────────────────────┐
+                           │ Stage 1: Swarm Booster      │
+                           └──────────────┬──────────────┘
+                                         │
+                          • Injects live, verified public trackers
+                          • Forces re-announce to DHT & trackers
+                          • Auto-repairs corrupt/errored states (recheck & resume)
+                          • Enters probation grace period (default 60m)
+                                         │
+                                         ▼
+                           { Did seeds or speed recover? }
+                            ├── YES: 🎉 Swarm Revived! Resumes downloading.
+                            └── NO:  (Grace period expires)
+                                         │
+                                         ▼
+                           ┌─────────────────────────────┐
+                           │ Stage 2: Servarr Failover   │
+                           │ (UI Toggle or Manual Action)│
+                           └──────────────┬──────────────┘
+                                         │
+                          • Removes dead download from Transmission
+                          • Blocklists bad release in Sonarr/Radarr/Lidarr
+                          • Dispatches search command for fresh healthy release
+                                         │
+                                         ▼
+                           ┌─────────────────────────────┐
+                           │ LLM-Judged VPN Rotation     │
+                           └─────────────────────────────┘
+                          • Ollama evaluates all active torrents & peer saturation
+                          • Swaps VPN location ONLY if downloading swarms are starved
+```
+
+---
+
 ## 🖥️ Web Dashboard
 
 The service includes a built-in real-time dashboard accessible via the FastAPI backend:
@@ -196,7 +238,18 @@ All settings can be configured via environment variables prefixed with `SENTINEL
 | `SENTINEL_VPN_ACTIVE_CONFIG` | Path to current active config file | `/app/vpn_configs/active.conf` |
 | `SENTINEL_MIN_SEEDS` | Minimum seeds before flagged as stalled | `2` |
 | `SENTINEL_MIN_DOWNLOAD_RATE_KBPS` | Minimum rate (KB/s) before diagnosing | `15.0` |
-| `SENTINEL_STALLED_DURATION_MINUTES`| Minutes stalled before action | `5` |
+| `SENTINEL_BOOST_ENABLED` | Enable individual torrent tracker injection & boosting | `true` |
+| `SENTINEL_AUTO_VPN_ROTATION_ENABLED` | Enable LLM-judged automatic VPN rotation | `true` |
+| `SENTINEL_STALL_THRESHOLD_MINUTES`| Minutes stalled before Stage 1 tracker injection | `5` |
+| `SENTINEL_RESCUE_GRACE_PERIOD_MINUTES`| Probation grace period (minutes) before Stage 2 failover | `60` |
+| `SENTINEL_AUTO_FAILOVER_ENABLED` | Automatically blocklist & search replacement in Servarr | `false` |
+| `SENTINEL_AUTO_BOOST_CADENCE_MINUTES`| Recurring tracker re-boost interval (minutes, 0 = disabled) | `120` |
+| `SENTINEL_SONARR_URL` | URL to Sonarr (e.g. `http://192.168.1.100:8989`) | `None` |
+| `SENTINEL_SONARR_API_KEY` | Sonarr API Key | `None` |
+| `SENTINEL_RADARR_URL` | URL to Radarr (e.g. `http://192.168.1.100:7878`) | `None` |
+| `SENTINEL_RADARR_API_KEY` | Radarr API Key | `None` |
+| `SENTINEL_LIDARR_URL` | URL to Lidarr (e.g. `http://192.168.1.100:8686`) | `None` |
+| `SENTINEL_LIDARR_API_KEY` | Lidarr API Key | `None` |
 | `SENTINEL_ROTATION_COOLDOWN_MINUTES`| Cooldown between rotations | `15` |
 | `SENTINEL_POST_ROTATION_GRACE_PERIOD_MINUTES`| Grace period after rotation | `3` |
 | `SENTINEL_MAX_ROTATIONS_PER_HOUR` | Maximum rotations per hour | `4` |

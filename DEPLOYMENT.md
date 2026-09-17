@@ -119,6 +119,22 @@ services:
       - SENTINEL_OLLAMA_BASE_URL=http://192.168.1.10:11434
       - SENTINEL_OLLAMA_MODEL=gemma4:26b
 
+      # Torrent Boosting & Rescue
+      - SENTINEL_BOOST_ENABLED=true
+      - SENTINEL_AUTO_VPN_ROTATION_ENABLED=true
+      - SENTINEL_AUTO_FAILOVER_ENABLED=false
+      - SENTINEL_STALL_THRESHOLD_MINUTES=5
+      - SENTINEL_RESCUE_GRACE_PERIOD_MINUTES=60
+      - SENTINEL_AUTO_BOOST_CADENCE_MINUTES=120
+
+      # Optional Servarr Integration
+      - SENTINEL_SONARR_URL=
+      - SENTINEL_SONARR_API_KEY=
+      - SENTINEL_RADARR_URL=
+      - SENTINEL_RADARR_API_KEY=
+      - SENTINEL_LIDARR_URL=
+      - SENTINEL_LIDARR_API_KEY=
+
       # Notifications (Optional)
       - SENTINEL_DISCORD_WEBHOOK_URL=
       - SENTINEL_TELEGRAM_BOT_TOKEN=
@@ -171,7 +187,18 @@ All options can be configured via environment variables prefixed with `SENTINEL_
 | `SENTINEL_OLLAMA_MODEL` | Ollama model name | `gemma4:26b` |
 | `SENTINEL_MIN_SEEDS` | Minimum seeds before flagged as stalled | `2` |
 | `SENTINEL_MIN_DOWNLOAD_RATE_KBPS` | Minimum rate (KB/s) before diagnosing | `15.0` |
-| `SENTINEL_STALLED_DURATION_MINUTES`| Duration stalled before triggering rotation | `5` |
+| `SENTINEL_BOOST_ENABLED` | Enable individual torrent tracker injection & boosting | `true` |
+| `SENTINEL_AUTO_VPN_ROTATION_ENABLED` | Enable LLM-judged automatic VPN rotation | `true` |
+| `SENTINEL_STALL_THRESHOLD_MINUTES`| Minutes stalled before Stage 1 tracker injection | `5` |
+| `SENTINEL_RESCUE_GRACE_PERIOD_MINUTES`| Probation grace period (minutes) before Stage 2 failover | `60` |
+| `SENTINEL_AUTO_FAILOVER_ENABLED` | Automatically blocklist & search replacement in Servarr | `false` |
+| `SENTINEL_AUTO_BOOST_CADENCE_MINUTES`| Recurring tracker re-boost interval (minutes, 0 = disabled) | `120` |
+| `SENTINEL_SONARR_URL` | URL to Sonarr (e.g. `http://192.168.1.100:8989`) | `None` |
+| `SENTINEL_SONARR_API_KEY` | Sonarr API Key | `None` |
+| `SENTINEL_RADARR_URL` | URL to Radarr (e.g. `http://192.168.1.100:7878`) | `None` |
+| `SENTINEL_RADARR_API_KEY` | Radarr API Key | `None` |
+| `SENTINEL_LIDARR_URL` | URL to Lidarr (e.g. `http://192.168.1.100:8686`) | `None` |
+| `SENTINEL_LIDARR_API_KEY` | Lidarr API Key | `None` |
 | `SENTINEL_ROTATION_COOLDOWN_MINUTES`| Cooldown between rotations | `15` |
 | `SENTINEL_POST_ROTATION_GRACE_PERIOD_MINUTES`| Grace period after rotation to measure recovery | `3` |
 | `SENTINEL_MAX_ROTATIONS_PER_HOUR` | Max allowed rotations per hour | `4` |
