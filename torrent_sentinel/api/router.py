@@ -18,7 +18,8 @@ from torrent_sentinel.api.schemas import (
     RotationEventSummary, 
     ScoreboardEntry,
     BoostEventSummary,
-    AutoFailoverToggleRequest
+    AutoFailoverToggleRequest,
+    RotateRequest
 )
 
 # Initialize logging for the web server
@@ -268,41 +269,72 @@ async def get_history():
 @app.get("/api/scoreboard", response_model=List[ScoreboardEntry])
 async def get_scoreboard():
     try:
-        import aiosqlite
-        async with aiosqlite.connect(storage.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT location_id, avg_peers, success_count FROM location_scores ORDER BY avg_peers DESC") as cursor:
-                rows = await cursor.fetchall()
-                return [ScoreboardEntry(
-                    location_id=r["location_id"],
-                    avg_peers=float(r["avg_peers"]),
-                    success_count=int(r["success_count"])
-                ) for r in rows]
+        rows = await storage.get_scoreboard()
+        return [ScoreboardEntry(
+            location_id=r["location_id"],
+            avg_peers=float(r["avg_peers"]),
+            success_count=int(r["success_count"])
+        ) for r in rows]
     except Exception as e:
         logger.debug("API get_scoreboard returned empty: %s", e)
         return []
 
+@app.get("/api/locations")
+async def get_locations():
+    locations = []
+    current_id = None
+    if daemon_instance and daemon_instance.vpn_adapter:
+        try:
+            available = await daemon_instance.vpn_adapter.get_available_locations()
+            current = await daemon_instance.vpn_adapter.get_current_profile()
+            current_id = current.id if current else None
+            scoreboard_rows = await storage.get_scoreboard()
+            scores_map = {r["location_id"]: r for r in scoreboard_rows}
+            locations = [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "is_current": (p.id == current_id),
+                    "avg_peers": scores_map[p.id]["avg_peers"] if p.id in scores_map else None,
+                    "success_count": scores_map[p.id]["success_count"] if p.id in scores_map else 0
+                }
+                for p in available
+            ]
+        except Exception as e:
+            logger.error("API get_locations error: %s", e)
+    return {
+        "status": "success",
+        "total": len(locations),
+        "current": current_id,
+        "locations": locations
+    }
+
 @app.post("/api/rotate")
-async def trigger_rotation(background_tasks: BackgroundTasks):
+async def trigger_rotation(background_tasks: BackgroundTasks, request: Optional[RotateRequest] = None):
     global daemon_instance
     if not daemon_instance:
         logger.warning("API trigger_rotation rejected: Daemon instance not ready.")
         raise HTTPException(status_code=503, detail="Daemon not running")
     
-    logger.info("Manual VPN rotation requested via Web Dashboard / API.")
+    preferred = request.location if request else None
+    logger.info("Manual VPN rotation requested via Web Dashboard / API (preferred: %s).", preferred)
 
-    async def run_rotation():
+    async def run_rotation(pref_loc: Optional[str] = None):
         adapter = daemon_instance.vpn_adapter
         current_profile = await adapter.get_current_profile()
         available = await adapter.get_available_locations()
-        target = next((p for p in available if p.id != (current_profile.id if current_profile else "")), None)
+        target = await daemon_instance.decision_engine.select_next_profile(
+            current_profile=current_profile,
+            available=available,
+            preferred_location=pref_loc
+        )
         if target:
-            logger.info("API Trigger: executing rotation to '%s'...", target.name)
+            logger.info("API Trigger: executing rotation to '%s' (%s)...", target.name, target.id)
             await daemon_instance.decision_engine.execute_rotation(current_profile, target, "Manual Web Dashboard Trigger")
         else:
             logger.warning("API Trigger: No alternate location available to rotate to.")
 
-    background_tasks.add_task(run_rotation)
+    background_tasks.add_task(run_rotation, preferred)
     return {"message": "Rotation triggered"}
 
 # Serve the frontend static files

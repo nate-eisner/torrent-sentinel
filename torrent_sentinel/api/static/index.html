@@ -685,10 +685,15 @@
                 document.getElementById('stat-failover-status').innerText = status.auto_failover_enabled ? 'Enabled' : 'Disabled';
                 document.getElementById('stat-failover-status').className = `text-2xl font-bold ${status.auto_failover_enabled ? 'text-purple-400' : 'text-slate-400'}`;
 
-                if (status.last_rotation) {
-                    const rotDate = new Date(status.last_rotation);
-                    document.getElementById('stat-rot-time').innerText = `Rotated: ${rotDate.toLocaleTimeString()}`;
-                }
+                let rotText = status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready';
+                document.getElementById('stat-rot-time').innerText = rotText;
+                try {
+                    const locRes = await fetch('/api/locations');
+                    if (locRes.ok) {
+                        const locData = await locRes.json();
+                        document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${rotText}`;
+                    }
+                } catch (_) {}
 
                 // 2. Torrents Queue
                 const torrentRes = await fetch('/api/torrents');

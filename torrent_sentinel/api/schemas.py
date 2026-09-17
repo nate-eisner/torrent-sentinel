@@ -62,3 +62,7 @@ class SystemStatus(BaseModel):
 class AutoFailoverToggleRequest(BaseModel):
     enabled: bool
 
+class RotateRequest(BaseModel):
+    location: Optional[str] = None
+
+

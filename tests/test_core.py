@@ -138,4 +138,61 @@ async def test_diagnostics_analyze_torrents_context(mock_transmission, mock_olla
     assert len(context["downloading_torrents"]) == 1
     assert len(context["stalled_torrents"]) == 1
 
+@pytest.mark.asyncio
+async def test_select_next_profile_round_robin(mock_storage):
+    from torrent_sentinel.engine.decision import DecisionEngine
+    from torrent_sentinel.vpn.mock import MockVPNAdapter
+    from torrent_sentinel.engine.diagnostics import Diagnostics
+
+    diag = Diagnostics(AsyncMock(), AsyncMock())
+    vpn = MockVPNAdapter()
+    engine = DecisionEngine(diag, mock_storage, vpn)
+
+    profiles = [
+        LocationProfile(id=f"loc-{i}", name=f"Location {i}", country="US", endpoint="", config_file=f"loc-{i}.conf")
+        for i in range(5)
+    ]
+
+    # Start at loc-0 -> should select loc-1
+    next_p = await engine.select_next_profile(profiles[0], profiles)
+    assert next_p.id == "loc-1"
+
+    # Start at loc-1 -> should select loc-2
+    next_p = await engine.select_next_profile(profiles[1], profiles)
+    assert next_p.id == "loc-2"
+
+    # Start at loc-4 -> should wrap around to loc-0
+    next_p = await engine.select_next_profile(profiles[4], profiles)
+    assert next_p.id == "loc-0"
+
+@pytest.mark.asyncio
+async def test_select_next_profile_anti_ping_pong(mock_storage):
+    from torrent_sentinel.engine.decision import DecisionEngine
+    from torrent_sentinel.vpn.mock import MockVPNAdapter
+    from torrent_sentinel.engine.diagnostics import Diagnostics
+
+    diag = Diagnostics(AsyncMock(), AsyncMock())
+    vpn = MockVPNAdapter()
+    engine = DecisionEngine(diag, mock_storage, vpn)
+
+    profiles = [
+        LocationProfile(id=f"loc-{i}", name=f"Location {i}", country="US", endpoint="", config_file=f"loc-{i}.conf")
+        for i in range(4)
+    ]
+
+    # Simulate recent history bouncing between loc-0 and loc-1
+    await mock_storage.record_rotation(RotationEvent(
+        id="rot-1", timestamp=datetime.now(), from_location="loc-0", to_location="loc-1", reason="test", peers_before=0, peers_after=1
+    ))
+    await mock_storage.record_rotation(RotationEvent(
+        id="rot-2", timestamp=datetime.now(), from_location="loc-1", to_location="loc-0", reason="test", peers_before=0, peers_after=1
+    ))
+
+    # Currently at loc-1. Because loc-0 and loc-1 are in recent history,
+    # anti-ping-pong must avoid loc-0 and pick an unvisited candidate (loc-2 or loc-3).
+    next_p = await engine.select_next_profile(profiles[1], profiles)
+    assert next_p.id not in ("loc-0", "loc-1")
+    assert next_p.id in ("loc-2", "loc-3")
+
+
 

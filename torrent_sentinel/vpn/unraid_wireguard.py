@@ -41,7 +41,14 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
             return profiles
 
         for filename in files:
-            if filename.endswith(".conf") and filename != "active.conf":
+            if filename.startswith("."):
+                continue
+            is_conf = filename.lower().endswith(".conf")
+            is_active = (
+                filename == "active.conf" or
+                (self.active_config_path and filename == os.path.basename(self.active_config_path))
+            )
+            if is_conf and not is_active:
                 name = filename[:-5]
                 profile = LocationProfile(
                     id=name,

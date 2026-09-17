@@ -91,43 +91,106 @@ class DecisionEngine:
 
         # Determine target profile
         available = await self.vpn_adapter.get_available_locations()
+        current_profile = await self.vpn_adapter.get_current_profile()
+        return await self.select_next_profile(
+            current_profile=current_profile,
+            available=available,
+            preferred_location=diagnosis.recommended_location
+        )
+
+    async def select_next_profile(
+        self,
+        current_profile: Optional[LocationProfile],
+        available: List[LocationProfile],
+        preferred_location: Optional[str] = None
+    ) -> Optional[LocationProfile]:
+        """Select the next VPN location profile ensuring fair rotation across all available configs.
+
+        Guarantees:
+        1. Never selects the current active profile.
+        2. Applies anti-ping-pong exclusion to prevent alternating between the same 2 locations.
+        3. Honors preferred / AI recommended locations if matching an eligible candidate.
+        4. Evaluates top scoreboard performers among eligible fresh locations.
+        5. Falls back to round-robin sequential stepping through all available config profiles.
+        """
         if not available:
             logger.error("DecisionEngine: No VPN profiles available in configured directory (%s)!", settings.VPN_CONFIGS_DIR)
             return None
 
-        current_profile = await self.vpn_adapter.get_current_profile()
+        if len(available) == 1:
+            logger.warning("DecisionEngine: Only one VPN profile exists (%s). Cannot rotate.", available[0].id)
+            return None
+
         current_id = current_profile.id if current_profile else None
         candidate_profiles = [p for p in available if p.id != current_id]
 
         if not candidate_profiles:
-            logger.warning("DecisionEngine: Only one VPN profile exists or candidate matches current location. Cannot rotate.")
+            logger.warning("DecisionEngine: No candidate profiles distinct from current (%s).", current_id)
             return None
 
-        target_profile = None
-
-        # Try Ollama recommended profile if specified
-        if diagnosis.recommended_location:
-            rec = diagnosis.recommended_location.lower()
-            target_profile = next((p for p in candidate_profiles if rec in p.id.lower() or rec in p.name.lower()), None)
+        # 1. Preferred location (from Ollama or manual user parameter)
+        if preferred_location:
+            pref = preferred_location.lower().strip()
+            target_profile = next(
+                (p for p in candidate_profiles if pref in p.id.lower() or pref in p.name.lower()),
+                None
+            )
             if target_profile:
-                logger.info("Selected AI recommended profile: %s", target_profile.name)
+                logger.info("DecisionEngine: Selected preferred/AI profile: %s (%s)", target_profile.name, target_profile.id)
+                return target_profile
 
-        # Fallback to scoreboard top performers
-        if not target_profile:
-            top_locations = await self.storage.get_top_locations(limit=5)
-            logger.debug("Scoreboard top locations: %s", top_locations)
+        # 2. Build anti-ping-pong recent exclusion set from rotation history
+        history = await self.storage.get_history()
+        recent_window_size = min(max(1, len(available) - 1), 5)
+        recent_locations = set()
+        for event in history[:recent_window_size]:
+            if event.to_location:
+                recent_locations.add(event.to_location.lower())
+            if event.from_location:
+                recent_locations.add(event.from_location.lower())
+
+        if current_id:
+            recent_locations.add(current_id.lower())
+
+        fresh_candidates = [
+            p for p in candidate_profiles
+            if p.id.lower() not in recent_locations and p.name.lower() not in recent_locations
+        ]
+
+        # If all candidates were visited in the recent window, relax to all candidates
+        pool = fresh_candidates if fresh_candidates else candidate_profiles
+
+        # 3. Scoreboard top performers among eligible pool
+        top_locations = await self.storage.get_top_locations(limit=len(available))
+        if top_locations:
             for top_id in top_locations:
-                target_profile = next((p for p in candidate_profiles if p.id == top_id), None)
-                if target_profile:
-                    logger.info("Selected top-scoring profile from scoreboard: %s", target_profile.name)
+                match = next((p for p in pool if p.id == top_id), None)
+                if match:
+                    logger.info("DecisionEngine: Selected top-scoring eligible profile: %s (id=%s)", match.name, match.id)
+                    return match
+
+        # 4. Sequential round-robin progression through all available configs
+        current_idx = -1
+        if current_profile:
+            for i, p in enumerate(available):
+                if p.id == current_profile.id:
+                    current_idx = i
                     break
 
-        # Fallback to first available alternative
-        if not target_profile:
-            target_profile = candidate_profiles[0]
-            logger.info("Selected next available profile: %s", target_profile.name)
+        for offset in range(1, len(available) + 1):
+            next_idx = (current_idx + offset) % len(available)
+            candidate = available[next_idx]
+            if candidate in pool:
+                logger.info(
+                    "DecisionEngine: Selected sequential round-robin profile: %s (%s, #%d/%d)",
+                    candidate.name, candidate.id, next_idx + 1, len(available)
+                )
+                return candidate
 
-        return target_profile
+        # 5. Final fallback to first candidate in pool
+        fallback = pool[0]
+        logger.info("DecisionEngine: Fallback to profile: %s (%s)", fallback.name, fallback.id)
+        return fallback
 
     async def execute_rotation(self, from_profile: Optional[LocationProfile], to_profile: LocationProfile, reason: str) -> bool:
         from_name = from_profile.name if from_profile else "Initial / Unknown"

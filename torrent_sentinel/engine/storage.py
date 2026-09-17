@@ -97,6 +97,16 @@ class Storage:
                 logger.debug("Top locations from scoreboard (limit=%d): %s", limit, results)
                 return results
 
+    async def get_scoreboard(self) -> List[Dict[str, Any]]:
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT location_id, avg_peers, success_count FROM location_scores ORDER BY avg_peers DESC") as cursor:
+                    rows = await cursor.fetchall()
+                    return [dict(r) for r in rows]
+        except Exception:
+            return []
+
     async def get_history(self) -> List[RotationEvent]:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
