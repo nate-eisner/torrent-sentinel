@@ -31,18 +31,37 @@ def test_vpn_adapter_factory():
 
 def test_lan_routing_applies_ip_rules():
     adapter = UnraidWireGuardAdapter()
+    adapter._default_gw = "172.17.0.1"
+    adapter._default_dev = "eth0"
     with patch.object(settings, "LAN_NETWORK", "192.168.1.0/24,10.0.0.0/8"):
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="default via 172.17.0.1 dev eth0\n")
+            mock_run.return_value = MagicMock(returncode=0)
             adapter._apply_lan_routing()
             
             calls = [call.args[0] for call in mock_run.call_args_list]
             # Verify ip rule was added for both subnets
             assert ["ip", "-4", "rule", "add", "to", "192.168.1.0/24", "table", "main", "pref", "100"] in calls
             assert ["ip", "-4", "rule", "add", "to", "10.0.0.0/8", "table", "main", "pref", "100"] in calls
-            # Verify route was added via eth0 gateway
-            assert ["ip", "route", "add", "192.168.1.0/24", "via", "172.17.0.1", "dev", "eth0"] in calls
-            assert ["ip", "route", "add", "10.0.0.0/8", "via", "172.17.0.1", "dev", "eth0"] in calls
+            # Verify route was replaced via eth0 gateway
+            assert ["ip", "-4", "route", "replace", "192.168.1.0/24", "via", "172.17.0.1", "dev", "eth0"] in calls
+            assert ["ip", "-4", "route", "replace", "10.0.0.0/8", "via", "172.17.0.1", "dev", "eth0"] in calls
+
+def test_detect_default_gateway_proc_net_route(tmp_path):
+    proc_route = tmp_path / "route"
+    # Format: Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT
+    proc_route.write_text(
+        "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n"
+        "eth0\t00000000\t010011AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n"
+    )
+    from unittest.mock import mock_open
+    adapter = UnraidWireGuardAdapter()
+    adapter._default_gw = None
+    adapter._default_dev = None
+    with patch("os.path.exists", return_value=True):
+        with patch("builtins.open", mock_open(read_data=proc_route.read_text())):
+            gw_ip, dev = adapter._detect_default_gateway()
+            assert gw_ip == "172.17.0.1"
+            assert dev == "eth0"
 
 def test_lan_routing_empty():
     adapter = UnraidWireGuardAdapter()

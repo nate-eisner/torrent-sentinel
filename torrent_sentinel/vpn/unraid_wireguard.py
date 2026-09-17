@@ -2,7 +2,9 @@ import os
 import shutil
 import subprocess
 import logging
-from typing import List, Optional
+import socket
+import struct
+from typing import List, Optional, Tuple
 from torrent_sentinel.vpn.base import BaseVPNAdapter
 from torrent_sentinel.models import LocationProfile
 from torrent_sentinel.config import settings
@@ -15,10 +17,15 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
         self.interface = settings.VPN_INTERFACE
         self.active_config_path = settings.VPN_ACTIVE_CONFIG
         self._current_profile: Optional[LocationProfile] = None
+        self._default_gw: Optional[str] = None
+        self._default_dev: Optional[str] = None
         logger.info(
             "Initialized UnraidWireGuardAdapter: interface=%s, configs_dir=%s, active_config=%s",
             self.interface, self.configs_dir, self.active_config_path
         )
+        # Pre-detect default gateway and apply LAN routing rules on adapter initialization
+        self._detect_default_gateway()
+        self._apply_lan_routing()
 
     async def get_available_locations(self) -> List[LocationProfile]:
         profiles = []
@@ -61,6 +68,55 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
         except Exception as e:
             logger.debug("Interface teardown check: %s", e)
 
+    def _detect_default_gateway(self) -> Tuple[Optional[str], Optional[str]]:
+        """Detects the host/Docker default gateway IP and network interface."""
+        if self._default_gw and self._default_dev:
+            return self._default_gw, self._default_dev
+
+        # 1. Primary: Parse standard Linux /proc/net/route
+        if os.path.exists("/proc/net/route"):
+            try:
+                with open("/proc/net/route", "r") as f:
+                    for line in f:
+                        fields = line.strip().split()
+                        if len(fields) >= 8 and fields[1] == "00000000" and fields[7] == "00000000":
+                            gw_hex = fields[2]
+                            if gw_hex != "00000000":
+                                dev = fields[0]
+                                gw_ip = socket.inet_ntoa(struct.pack("<L", int(gw_hex, 16)))
+                                self._default_gw = gw_ip
+                                self._default_dev = dev
+                                logger.info("Discovered primary gateway from /proc/net/route: %s dev %s", gw_ip, dev)
+                                return gw_ip, dev
+            except Exception as e:
+                logger.debug("Error reading /proc/net/route: %s", e)
+
+        # 2. Fallback: Parse `ip route` output
+        for cmd in [
+            ["ip", "-4", "route", "show", "table", "main", "default"],
+            ["ip", "-4", "route", "show", "default"],
+            ["ip", "-4", "route"]
+        ]:
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True)
+                if res.returncode == 0 and res.stdout:
+                    for line in res.stdout.splitlines():
+                        if "default via" in line:
+                            parts = line.split()
+                            via_idx = parts.index("via")
+                            gw_ip = parts[via_idx + 1]
+                            dev = "eth0"
+                            if "dev" in parts:
+                                dev = parts[parts.index("dev") + 1]
+                            self._default_gw = gw_ip
+                            self._default_dev = dev
+                            logger.info("Discovered primary gateway from '%s': %s dev %s", " ".join(cmd), gw_ip, dev)
+                            return gw_ip, dev
+            except Exception:
+                continue
+
+        return None, None
+
     def _apply_lan_routing(self):
         """Applies policy routing rules and routes so LAN traffic to published ports (8000, 9091) can bypass VPN."""
         if not settings.LAN_NETWORK:
@@ -71,28 +127,32 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
             return
 
         logger.info("Applying LAN bypass routing for subnets: %s", subnets)
-        try:
-            # 1. Add policy routing rules for each subnet to lookup table 'main' with priority 100
-            # (wg-quick adds lookup 51820 at priority ~32764, so priority 100 takes precedence)
-            for subnet in subnets:
-                subprocess.run(["ip", "-4", "rule", "del", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
-                res = subprocess.run(["ip", "-4", "rule", "add", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
-                if res.returncode == 0:
-                    logger.debug("Added ip rule to table main for %s", subnet)
+        gw_ip, dev = self._detect_default_gateway()
+        if not gw_ip or not dev:
+            logger.warning("Could not determine default gateway/interface; cannot configure explicit LAN bypass routes.")
+            return
 
-            # 2. Add explicit route via eth0 default gateway in table main if available
-            gw_proc = subprocess.run(["ip", "route", "show", "dev", "eth0"], capture_output=True, text=True)
-            if gw_proc.returncode == 0:
-                for line in gw_proc.stdout.splitlines():
-                    if line.startswith("default via"):
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            gw_ip = parts[2]
-                            for subnet in subnets:
-                                subprocess.run(["ip", "route", "del", subnet, "via", gw_ip, "dev", "eth0"], capture_output=True, text=True)
-                                subprocess.run(["ip", "route", "add", subnet, "via", gw_ip, "dev", "eth0"], capture_output=True, text=True)
-                            logger.debug("Added explicit LAN routes via eth0 gateway %s", gw_ip)
-                        break
+        try:
+            for subnet in subnets:
+                # 1. Add explicit route in table main (idempotent replace)
+                res_route = subprocess.run(
+                    ["ip", "-4", "route", "replace", subnet, "via", gw_ip, "dev", dev],
+                    capture_output=True,
+                    text=True
+                )
+                if res_route.returncode == 0:
+                    logger.info("Configured LAN route: %s via %s dev %s", subnet, gw_ip, dev)
+                else:
+                    logger.warning("Failed to configure LAN route for %s via %s: %s", subnet, gw_ip, res_route.stderr.strip())
+
+                # 2. Add policy routing rule to lookup table main with priority 100
+                # (Preempts WireGuard's suppress_prefixlength and 51820 table)
+                subprocess.run(["ip", "-4", "rule", "del", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
+                res_rule = subprocess.run(["ip", "-4", "rule", "add", "to", subnet, "table", "main", "pref", "100"], capture_output=True, text=True)
+                if res_rule.returncode == 0:
+                    logger.debug("Configured policy rule for %s -> table main (pref 100)", subnet)
+
+            logger.info("LAN bypass routing successfully applied.")
         except FileNotFoundError:
             logger.debug("Command 'ip' not found; skipping LAN routing configuration.")
         except Exception as e:
