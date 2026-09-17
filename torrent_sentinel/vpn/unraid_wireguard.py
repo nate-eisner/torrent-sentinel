@@ -158,6 +158,49 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
         except Exception as e:
             logger.warning("Could not complete LAN bypass routing: %s", e)
 
+    def _fix_rp_filter(self, iface: str):
+        """Sets rp_filter=2 (loose mode) on interfaces so the Linux kernel doesn't drop incoming WireGuard packets."""
+        for target in ["all", "default", iface, "eth0"]:
+            try:
+                subprocess.run(["sysctl", "-w", f"net.ipv4.conf.{target}.rp_filter=2"], capture_output=True, text=True)
+            except Exception:
+                pass
+
+    def _apply_iptables_rules(self, iface: str):
+        """Applies TCP MSS clamping and outbound NAT MASQUERADE for the WireGuard interface."""
+        try:
+            # Clamp MSS to path MTU to prevent large TCP packets (HTTPS/curl) from hanging
+            subprocess.run([
+                "iptables", "-t", "mangle", "-A", "POSTROUTING",
+                "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN",
+                "-j", "TCPMSS", "--clamp-mss-to-pmtu"
+            ], capture_output=True, text=True)
+            # Masquerade outbound traffic leaving the VPN tunnel
+            subprocess.run([
+                "iptables", "-t", "nat", "-A", "POSTROUTING",
+                "-o", iface, "-j", "MASQUERADE"
+            ], capture_output=True, text=True)
+        except Exception as e:
+            logger.debug("iptables rules setup: %s", e)
+
+    def _ensure_resolv_conf(self):
+        """Ensures /etc/resolv.conf has public fallback DNS (1.1.1.1, 8.8.8.8) so hostnames resolve."""
+        try:
+            content = ""
+            if os.path.exists("/etc/resolv.conf"):
+                with open("/etc/resolv.conf", "r") as f:
+                    content = f.read()
+
+            fallbacks = ["1.1.1.1", "8.8.8.8"]
+            missing = [ip for ip in fallbacks if ip not in content]
+            if missing:
+                with open("/etc/resolv.conf", "a") as f:
+                    for ip in missing:
+                        f.write(f"\nnameserver {ip}\n")
+                logger.info("Appended public DNS fallbacks to /etc/resolv.conf: %s", missing)
+        except Exception as e:
+            logger.debug("Could not append fallback DNS to /etc/resolv.conf: %s", e)
+
     async def rotate_to(self, profile: LocationProfile) -> bool:
         logger.info("Starting WireGuard rotation to profile '%s' (%s)...", profile.name, profile.config_file)
         try:
@@ -202,7 +245,16 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
             logger.info("wg-quick up succeeded for profile '%s'. Interface output: %s", profile.name, result.stdout.strip())
             self._current_profile = profile
 
-            # 5. Apply LAN bypass routing to ensure WebUIs remain accessible
+            # 5. Fix reverse path filtering (rp_filter) so incoming WireGuard packets are not dropped
+            self._fix_rp_filter(profile.id)
+
+            # 6. Apply TCP MSS clamping and NAT masquerade on wireguard interface
+            self._apply_iptables_rules(profile.id)
+
+            # 7. Ensure fallback DNS in /etc/resolv.conf so curl and domain resolution always work
+            self._ensure_resolv_conf()
+
+            # 8. Apply LAN bypass routing to ensure WebUIs and local LAN services remain accessible
             self._apply_lan_routing()
             return True
 
