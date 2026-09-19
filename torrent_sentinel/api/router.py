@@ -19,6 +19,7 @@ from torrent_sentinel.api.schemas import (
     ScoreboardEntry,
     BoostEventSummary,
     AutoFailoverToggleRequest,
+    VpnRotationToggleRequest,
     RotateRequest
 )
 
@@ -54,6 +55,7 @@ async def get_status():
     current_loc = "Unknown"
     last_rot_time = None
     auto_failover = settings.AUTO_FAILOVER_ENABLED
+    auto_vpn_rotation = settings.AUTO_VPN_ROTATION_ENABLED
     cached_trackers = 0
     healthy_trackers = 0
 
@@ -63,7 +65,17 @@ async def get_status():
                 profile = await daemon_instance.vpn_adapter.get_current_profile()
                 if profile:
                     current_loc = profile.name
-            auto_failover = await daemon_instance.booster.is_auto_failover_enabled()
+            if hasattr(daemon_instance, "booster") and daemon_instance.booster:
+                auto_failover = await daemon_instance.booster.is_auto_failover_enabled()
+            if hasattr(daemon_instance, "is_vpn_rotation_enabled"):
+                try:
+                    res = daemon_instance.is_vpn_rotation_enabled()
+                    if asyncio.iscoroutine(res):
+                        auto_vpn_rotation = await res
+                    elif isinstance(res, bool):
+                        auto_vpn_rotation = res
+                except Exception:
+                    pass
             if daemon_instance.tracker_service:
                 trackers = daemon_instance.tracker_service.get_trackers()
                 cached_trackers = len(trackers)
@@ -76,6 +88,10 @@ async def get_status():
                             healthy_trackers = summary.get("healthy_count", len(trackers))
                     except Exception:
                         pass
+        else:
+            val = await storage.get_setting("auto_vpn_rotation_enabled")
+            if val is not None:
+                auto_vpn_rotation = (val.lower() == "true")
     except Exception as e:
         logger.debug("API get_status: Error reading daemon state: %s", e)
 
@@ -93,7 +109,8 @@ async def get_status():
         last_rotation=last_rot_time,
         boost_enabled=settings.BOOST_ENABLED,
         auto_failover_enabled=auto_failover,
-        auto_vpn_rotation_enabled=settings.AUTO_VPN_ROTATION_ENABLED,
+        auto_vpn_rotation_enabled=auto_vpn_rotation,
+        vpn_rotation_paused=not auto_vpn_rotation,
         cached_trackers_count=cached_trackers,
         healthy_trackers_count=healthy_trackers
     )
@@ -193,6 +210,33 @@ async def toggle_auto_failover(req: AutoFailoverToggleRequest):
     await daemon_instance.booster.set_auto_failover_enabled(req.enabled)
     logger.info("Auto-failover setting updated to: %s", req.enabled)
     return {"status": "success", "auto_failover_enabled": req.enabled}
+
+@app.post("/api/settings/vpn-rotation")
+async def toggle_vpn_rotation(req: VpnRotationToggleRequest):
+    enabled = req.enabled if req.enabled is not None else (not req.paused if req.paused is not None else True)
+    if daemon_instance:
+        await daemon_instance.set_vpn_rotation_enabled(enabled)
+    else:
+        await storage.set_setting("auto_vpn_rotation_enabled", str(enabled).lower())
+    logger.info("VPN rotation setting updated: enabled=%s (paused=%s)", enabled, not enabled)
+    return {
+        "status": "success",
+        "auto_vpn_rotation_enabled": enabled,
+        "vpn_rotation_paused": not enabled
+    }
+
+@app.post("/api/settings/auto-vpn-rotation")
+async def toggle_auto_vpn_rotation(req: VpnRotationToggleRequest):
+    return await toggle_vpn_rotation(req)
+
+@app.post("/api/vpn/pause")
+async def pause_vpn_rotation():
+    return await toggle_vpn_rotation(VpnRotationToggleRequest(paused=True))
+
+@app.post("/api/vpn/resume")
+async def resume_vpn_rotation():
+    return await toggle_vpn_rotation(VpnRotationToggleRequest(paused=False))
+
 
 @app.get("/api/boost-history", response_model=List[BoostEventSummary])
 async def get_boost_history():

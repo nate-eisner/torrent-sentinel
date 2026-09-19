@@ -56,13 +56,19 @@ class SystemStatus(BaseModel):
     boost_enabled: bool = True
     auto_failover_enabled: bool = False
     auto_vpn_rotation_enabled: bool = True
+    vpn_rotation_paused: bool = False
     cached_trackers_count: int = 0
     healthy_trackers_count: int = 0
 
 class AutoFailoverToggleRequest(BaseModel):
     enabled: bool
 
+class VpnRotationToggleRequest(BaseModel):
+    enabled: Optional[bool] = None
+    paused: Optional[bool] = None
+
 class RotateRequest(BaseModel):
     location: Optional[str] = None
+
 
 

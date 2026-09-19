@@ -194,5 +194,35 @@ async def test_select_next_profile_anti_ping_pong(mock_storage):
     assert next_p.id not in ("loc-0", "loc-1")
     assert next_p.id in ("loc-2", "loc-3")
 
+@pytest.mark.asyncio
+async def test_daemon_vpn_rotation_pause_setting(mock_storage):
+    from torrent_sentinel.engine.daemon import SentinelDaemon
+    from torrent_sentinel.vpn.mock import MockVPNAdapter
+
+    vpn = MockVPNAdapter()
+    daemon = SentinelDaemon(vpn)
+    daemon.storage = mock_storage
+
+    # Default should be True
+    assert await daemon.is_vpn_rotation_enabled() is True
+    assert await daemon.is_vpn_rotation_paused() is False
+
+    # Pause rotation
+    await daemon.set_vpn_rotation_paused(True)
+    assert await daemon.is_vpn_rotation_enabled() is False
+    assert await daemon.is_vpn_rotation_paused() is True
+
+    # Check persistence in storage
+    saved_val = await mock_storage.get_setting("auto_vpn_rotation_enabled")
+    assert saved_val == "false"
+
+    # Resume rotation
+    await daemon.set_vpn_rotation_enabled(True)
+    assert await daemon.is_vpn_rotation_enabled() is True
+    assert await daemon.is_vpn_rotation_paused() is False
+    saved_val = await mock_storage.get_setting("auto_vpn_rotation_enabled")
+    assert saved_val == "true"
+
+
 
 

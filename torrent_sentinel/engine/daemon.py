@@ -111,8 +111,9 @@ class SentinelDaemon:
                 if settings.BOOST_ENABLED:
                     await self.booster.run_cycle(torrents)
 
-                # 3. LLM-Evaluated VPN Rotation
-                if settings.AUTO_VPN_ROTATION_ENABLED:
+                # 4. LLM-Evaluated VPN Rotation (if not paused/disabled)
+                auto_vpn_enabled = await self.is_vpn_rotation_enabled()
+                if auto_vpn_enabled:
                     target_profile = await self.decision_engine.decide_rotation(
                         torrents,
                         stalled_records=self.booster.stalled_records
@@ -129,9 +130,9 @@ class SentinelDaemon:
                     else:
                         logger.info("Cycle #%d: Swarm healthy or rotation not indicated. Standby.", cycle)
                 else:
-                    logger.debug("Auto VPN rotation is disabled by configuration.")
+                    logger.debug("Cycle #%d: Auto VPN rotation is paused or disabled. Standby.", cycle)
 
-                # 4. Wait for next interval
+                # 5. Wait for next interval
                 logger.debug("Cycle #%d complete. Sleeping for 60 seconds...", cycle)
                 await asyncio.sleep(60)
 
@@ -139,6 +140,21 @@ class SentinelDaemon:
                 logger.error("Exception occurred in daemon cycle #%d: %s", cycle, e, exc_info=True)
                 logger.info("Pausing 30 seconds before retrying daemon cycle...")
                 await asyncio.sleep(30)
+
+    async def is_vpn_rotation_enabled(self) -> bool:
+        val = await self.storage.get_setting("auto_vpn_rotation_enabled")
+        if val is not None:
+            return val.lower() == "true"
+        return settings.AUTO_VPN_ROTATION_ENABLED
+
+    async def set_vpn_rotation_enabled(self, enabled: bool):
+        await self.storage.set_setting("auto_vpn_rotation_enabled", str(enabled).lower())
+
+    async def is_vpn_rotation_paused(self) -> bool:
+        return not (await self.is_vpn_rotation_enabled())
+
+    async def set_vpn_rotation_paused(self, paused: bool):
+        await self.set_vpn_rotation_enabled(not paused)
 
     def stop(self):
         logger.info("Stopping Torrent Sentinel Daemon...")

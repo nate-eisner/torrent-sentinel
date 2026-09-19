@@ -159,3 +159,48 @@ def test_api_rotate_endpoint(client):
         assert resp.status_code == 200
         assert resp.json()["message"] == "Rotation triggered"
 
+def test_api_toggle_vpn_rotation_endpoint(client):
+    with patch("torrent_sentinel.api.router.daemon_instance") as mock_daemon:
+        mock_daemon.set_vpn_rotation_enabled = AsyncMock(return_value=None)
+        
+        # Test pausing via enabled=False
+        resp = client.post("/api/settings/vpn-rotation", json={"enabled": False})
+        assert resp.status_code == 200
+        assert resp.json()["auto_vpn_rotation_enabled"] is False
+        assert resp.json()["vpn_rotation_paused"] is True
+        mock_daemon.set_vpn_rotation_enabled.assert_called_with(False)
+
+        # Test pausing via paused=True
+        resp = client.post("/api/settings/vpn-rotation", json={"paused": True})
+        assert resp.status_code == 200
+        assert resp.json()["auto_vpn_rotation_enabled"] is False
+        assert resp.json()["vpn_rotation_paused"] is True
+        mock_daemon.set_vpn_rotation_enabled.assert_called_with(False)
+
+        # Test pause endpoint
+        resp = client.post("/api/vpn/pause")
+        assert resp.status_code == 200
+        assert resp.json()["vpn_rotation_paused"] is True
+
+        # Test resume endpoint
+        resp = client.post("/api/vpn/resume")
+        assert resp.status_code == 200
+        assert resp.json()["auto_vpn_rotation_enabled"] is True
+        assert resp.json()["vpn_rotation_paused"] is False
+
+def test_api_status_vpn_rotation_paused_state(client):
+    with patch("torrent_sentinel.api.router.daemon_instance") as mock_daemon:
+        mock_daemon.running = True
+        mock_daemon.vpn_adapter.get_current_profile = AsyncMock(return_value=None)
+        mock_daemon.booster.is_auto_failover_enabled = AsyncMock(return_value=False)
+        mock_daemon.is_vpn_rotation_enabled = AsyncMock(return_value=False)
+        mock_daemon.tracker_service.get_trackers = MagicMock(return_value=[])
+
+        with patch("torrent_sentinel.clients.transmission.TransmissionClient.get_torrents", AsyncMock(return_value=[])):
+            resp = client.get("/api/status")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["auto_vpn_rotation_enabled"] is False
+            assert data["vpn_rotation_paused"] is True
+
+

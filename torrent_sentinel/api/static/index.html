@@ -47,6 +47,19 @@
                     </label>
                 </div>
 
+                <!-- VPN Rotation Toggle (Active / Paused) -->
+                <div class="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl" title="Pause or resume automated VPN rotation">
+                    <div class="flex items-center gap-1.5">
+                        <span id="rotation-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="text-xs font-medium text-slate-300">VPN Rotation</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="rotation-toggle" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                    <span id="rotation-status-text" class="text-[11px] font-semibold text-emerald-400 min-w-[42px]">Active</span>
+                </div>
+
                 <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 border border-blue-500/30">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> Rotate VPN
                 </button>
@@ -67,7 +80,10 @@
             <div class="bg-slate-900/80 backdrop-blur p-5 rounded-2xl border border-slate-800 shadow-xl">
                 <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">
                     <span>Active VPN Location</span>
-                    <i data-lucide="globe" class="w-4 h-4 text-emerald-400"></i>
+                    <div class="flex items-center gap-2">
+                        <span id="stat-rotation-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-800/40">Active</span>
+                        <i data-lucide="globe" class="w-4 h-4 text-emerald-400"></i>
+                    </div>
                 </div>
                 <div id="stat-location" class="text-2xl font-bold text-emerald-400 truncate">--</div>
                 <div id="stat-rot-time" class="text-xs text-slate-400 mt-1">Ready</div>
@@ -256,7 +272,21 @@
 
                 <!-- VPN Rotation Pane -->
                 <div id="pane-vpn" class="p-4 space-y-3 overflow-y-auto flex-1 hidden">
-                    <div class="text-center text-xs text-slate-500 py-8">Loading rotation history...</div>
+                    <div id="vpn-pane-controls" class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-semibold text-white flex items-center gap-1.5">
+                                <span id="vpn-pane-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                Auto Rotation: <span id="vpn-pane-state" class="text-emerald-400 font-medium">Active</span>
+                            </div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">Automated AI & health rotation</div>
+                        </div>
+                        <button id="vpn-pane-toggle-btn" onclick="toggleVpnRotationAction()" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all">
+                            <span id="vpn-pane-toggle-text">Pause</span>
+                        </button>
+                    </div>
+                    <div id="vpn-history-list" class="space-y-3">
+                        <div class="text-center text-xs text-slate-500 py-8">Loading rotation history...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -681,17 +711,51 @@
 
                 // Failover switch sync
                 const toggle = document.getElementById('failover-toggle');
-                toggle.checked = Boolean(status.auto_failover_enabled);
+                if (toggle && document.activeElement !== toggle) {
+                    toggle.checked = Boolean(status.auto_failover_enabled);
+                }
                 document.getElementById('stat-failover-status').innerText = status.auto_failover_enabled ? 'Enabled' : 'Disabled';
                 document.getElementById('stat-failover-status').className = `text-2xl font-bold ${status.auto_failover_enabled ? 'text-purple-400' : 'text-slate-400'}`;
 
-                let rotText = status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready';
-                document.getElementById('stat-rot-time').innerText = rotText;
+                // VPN Rotation setting sync
+                const isRotEnabled = Boolean(status.auto_vpn_rotation_enabled);
+                const rotToggle = document.getElementById('rotation-toggle');
+                if (rotToggle && document.activeElement !== rotToggle) {
+                    rotToggle.checked = isRotEnabled;
+                }
+                const rotDot = document.getElementById('rotation-status-dot');
+                const rotText = document.getElementById('rotation-status-text');
+                const rotBadge = document.getElementById('stat-rotation-badge');
+                const paneDot = document.getElementById('vpn-pane-dot');
+                const paneState = document.getElementById('vpn-pane-state');
+                const paneBtnText = document.getElementById('vpn-pane-toggle-text');
+
+                if (isRotEnabled) {
+                    if (rotDot) rotDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+                    if (rotText) { rotText.innerText = 'Active'; rotText.className = 'text-[11px] font-semibold text-emerald-400 min-w-[42px]'; }
+                    if (rotBadge) { rotBadge.innerText = 'Active'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-800/40'; }
+                    if (paneDot) paneDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                    if (paneState) { paneState.innerText = 'Active'; paneState.className = 'text-emerald-400 font-medium'; }
+                    if (paneBtnText) paneBtnText.innerText = 'Pause';
+                } else {
+                    if (rotDot) rotDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                    if (rotText) { rotText.innerText = 'Paused'; rotText.className = 'text-[11px] font-semibold text-amber-400 min-w-[42px]'; }
+                    if (rotBadge) { rotBadge.innerText = 'Paused'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-900/40 text-amber-300 border border-amber-800/40'; }
+                    if (paneDot) paneDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                    if (paneState) { paneState.innerText = 'Paused'; paneState.className = 'text-amber-400 font-medium'; }
+                    if (paneBtnText) paneBtnText.innerText = 'Resume';
+                }
+
+                let rotTextStatus = isRotEnabled
+                    ? (status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready')
+                    : 'Auto-rotation Paused';
+                document.getElementById('stat-rot-time').innerText = rotTextStatus;
                 try {
                     const locRes = await fetch('/api/locations');
                     if (locRes.ok) {
                         const locData = await locRes.json();
-                        document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${rotText}`;
+                        const statusSuffix = isRotEnabled ? rotTextStatus : 'Paused';
+                        document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${statusSuffix}`;
                     }
                 } catch (_) {}
 
@@ -727,10 +791,11 @@
                 // 4. VPN Rotation History
                 const historyRes = await fetch('/api/history');
                 const vpnHistory = await historyRes.json();
+                const historyList = document.getElementById('vpn-history-list') || paneVpn;
                 if (vpnHistory.length === 0) {
-                    paneVpn.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">No VPN rotations recorded yet.</div>';
+                    historyList.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">No VPN rotations recorded yet.</div>';
                 } else {
-                    paneVpn.innerHTML = vpnHistory.map(h => `
+                    historyList.innerHTML = vpnHistory.map(h => `
                         <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition-colors">
                             <div class="flex justify-between items-center text-[11px] text-slate-500 mb-1">
                                 <span class="font-mono">${new Date(h.timestamp).toLocaleTimeString()}</span>
@@ -817,6 +882,42 @@
                 e.target.checked = !enabled;
             }
         });
+
+        // VPN Rotation setting toggle and helpers
+        async function setVpnRotationSetting(enabled) {
+            try {
+                const res = await fetch('/api/settings/vpn-rotation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                if (res.ok) {
+                    showToast(enabled ? '▶️ Auto VPN rotation resumed (active)' : '⏸️ Auto VPN rotation paused');
+                    fetchData();
+                } else {
+                    showToast('Failed to update VPN rotation setting', true);
+                    const toggle = document.getElementById('rotation-toggle');
+                    if (toggle) toggle.checked = !enabled;
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, true);
+                const toggle = document.getElementById('rotation-toggle');
+                if (toggle) toggle.checked = !enabled;
+            }
+        }
+
+        const rotToggleEl = document.getElementById('rotation-toggle');
+        if (rotToggleEl) {
+            rotToggleEl.addEventListener('change', async (e) => {
+                await setVpnRotationSetting(e.target.checked);
+            });
+        }
+
+        async function toggleVpnRotationAction() {
+            const toggle = document.getElementById('rotation-toggle');
+            const currentEnabled = toggle ? toggle.checked : true;
+            await setVpnRotationSetting(!currentEnabled);
+        }
 
         // Rotate VPN button
         document.getElementById('rotate-btn').addEventListener('click', async () => {
