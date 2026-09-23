@@ -203,6 +203,7 @@ UNRAID SETUP:
   <Config Name="Transmission Port" Target="SENTINEL_TRANSMISSION_PORT" Default="9091" Mode="" Description="Transmission RPC Port" Type="Variable" Display="always" Required="true" Mask="false">9091</Config>
   <Config Name="Transmission RPC Path" Target="SENTINEL_TRANSMISSION_RPC_PATH" Default="/transmission/rpc" Mode="" Description="Transmission RPC Path" Type="Variable" Display="advanced" Required="false" Mask="false">/transmission/rpc</Config>
   <Config Name="Transmission Auth" Target="SENTINEL_TRANSMISSION_AUTH" Default="" Mode="" Description="Transmission credentials in username:password format (leave empty if disabled)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Transmission Web URL" Target="SENTINEL_TRANSMISSION_WEB_URL" Default="" Mode="" Description="Custom WebUI URL for Transmission link (leave empty to auto-derive from host and port)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="LAN Subnets Bypass" Target="SENTINEL_LAN_NETWORK" Default="192.168.0.0/16,10.0.0.0/8,172.16.0.0/12" Mode="" Description="Comma-separated local subnets allowed to bypass VPN for WebUI access (e.g. 192.168.1.0/24)" Type="Variable" Display="always" Required="false" Mask="false">192.168.0.0/16,10.0.0.0/8,172.16.0.0/12</Config>
   <Config Name="Ollama Enabled" Target="SENTINEL_OLLAMA_ENABLED" Default="true" Mode="" Description="Enable AI diagnostics via Ollama (true/false)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
   <Config Name="Ollama Base URL" Target="SENTINEL_OLLAMA_BASE_URL" Default="http://192.168.0.10:11434" Mode="" Description="Ollama API base URL" Type="Variable" Display="always" Required="false" Mask="false">http://192.168.0.10:11434</Config>
@@ -222,5 +223,7 @@ UNRAID SETUP:
   <Config Name="Radarr API Key" Target="SENTINEL_RADARR_API_KEY" Default="" Mode="" Description="Radarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Lidarr URL" Target="SENTINEL_LIDARR_URL" Default="" Mode="" Description="URL to Lidarr (e.g. http://192.168.1.100:8686)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Lidarr API Key" Target="SENTINEL_LIDARR_API_KEY" Default="" Mode="" Description="Lidarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Prowlarr URL" Target="SENTINEL_PROWLARR_URL" Default="" Mode="" Description="URL to Prowlarr (e.g. http://192.168.1.100:9696)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Prowlarr API Key" Target="SENTINEL_PROWLARR_API_KEY" Default="" Mode="" Description="Prowlarr API Key" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Log Level" Target="SENTINEL_LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
 </Container>

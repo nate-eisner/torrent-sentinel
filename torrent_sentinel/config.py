@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     TRANSMISSION_PORT: int = 9091
     TRANSMISSION_RPC_PATH: str = "/transmission/rpc"
     TRANSMISSION_AUTH: Optional[str] = None
+    TRANSMISSION_WEB_URL: Optional[str] = None
+    TRANSMISSION_WEB_ENABLED: bool = True
 
     # Ollama
     OLLAMA_ENABLED: bool = True
@@ -62,6 +64,12 @@ class Settings(BaseSettings):
     RADARR_API_KEY: Optional[str] = None
     LIDARR_URL: Optional[str] = None
     LIDARR_API_KEY: Optional[str] = None
+    PROWLARR_URL: Optional[str] = None
+    PROWLARR_API_KEY: Optional[str] = None
+    BAZARR_URL: Optional[str] = None
+    BAZARR_API_KEY: Optional[str] = None
+    READARR_URL: Optional[str] = None
+    READARR_API_KEY: Optional[str] = None
 
     # Logging
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR

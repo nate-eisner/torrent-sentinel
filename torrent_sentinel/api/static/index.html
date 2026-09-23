@@ -23,46 +23,56 @@
         <div id="toast" class="fixed top-5 right-5 z-50 transform transition-all duration-300 translate-y-[-100px] opacity-0 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium"></div>
 
         <!-- Header -->
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-800/80 pb-6">
-            <div>
-                <h1 class="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                    <div class="p-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
-                        <i data-lucide="shield-check" class="w-7 h-7"></i>
+        <header class="mb-8 border-b border-slate-800/80 pb-6 space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 class="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                        <div class="p-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                            <i data-lucide="shield-check" class="w-7 h-7"></i>
+                        </div>
+                        <span>Torrent Sentinel</span>
+                    </h1>
+                    <p class="text-slate-400 text-sm mt-1">WireGuard VPN Gateway & Automated Swarm Booster</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div id="status-badge" class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span> Checking status...
                     </div>
-                    <span>Torrent Sentinel</span>
-                </h1>
-                <p class="text-slate-400 text-sm mt-1">WireGuard VPN Gateway & Automated Swarm Booster</p>
+                    
+                    <!-- Auto-Failover Toggle -->
+                    <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
+                        <span class="text-xs font-medium text-slate-300">Auto Failover</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="failover-toggle" class="sr-only peer">
+                            <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- VPN Rotation Toggle (Active / Paused) -->
+                    <div class="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl" title="Pause or resume automated VPN rotation">
+                        <div class="flex items-center gap-1.5">
+                            <span id="rotation-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span class="text-xs font-medium text-slate-300">VPN Rotation</span>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="rotation-toggle" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                        <span id="rotation-status-text" class="text-[11px] font-semibold text-emerald-400 min-w-[42px]">Active</span>
+                    </div>
+
+                    <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 border border-blue-500/30">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Rotate VPN
+                    </button>
+                </div>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <div id="status-badge" class="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-400 flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span> Checking status...
-                </div>
-                
-                <!-- Auto-Failover Toggle -->
-                <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
-                    <span class="text-xs font-medium text-slate-300">Auto Failover</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="failover-toggle" class="sr-only peer">
-                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                </div>
 
-                <!-- VPN Rotation Toggle (Active / Paused) -->
-                <div class="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl" title="Pause or resume automated VPN rotation">
-                    <div class="flex items-center gap-1.5">
-                        <span id="rotation-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span class="text-xs font-medium text-slate-300">VPN Rotation</span>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="rotation-toggle" class="sr-only peer" checked>
-                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-                    </label>
-                    <span id="rotation-status-text" class="text-[11px] font-semibold text-emerald-400 min-w-[42px]">Active</span>
-                </div>
-
-                <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 border border-blue-500/30">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Rotate VPN
-                </button>
+            <!-- Configured Web UIs Quick Links Bar (only shown if configured) -->
+            <div id="web-uis-bar" class="hidden flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/60">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mr-1">
+                    <i data-lucide="layout-grid" class="w-3.5 h-3.5 text-blue-400"></i> Web UIs:
+                </span>
+                <div id="web-uis-list" class="flex flex-wrap items-center gap-2"></div>
             </div>
         </header>
 
@@ -300,6 +310,68 @@
         let currentSearch = '';
         let sortField = 'name'; // 'name' | 'status' | 'progress' | 'rate_download' | 'peers'
         let sortDirection = 'asc'; // 'asc' | 'desc'
+        let configuredWebUis = [];
+        let configuredWebUisMap = {};
+
+        function resolveWebUrl(rawUrl) {
+            if (!rawUrl) return '#';
+            try {
+                const u = new URL(rawUrl, window.location.origin);
+                if (u.hostname === '127.0.0.1' || u.hostname === 'localhost' || u.hostname === '0.0.0.0') {
+                    u.hostname = window.location.hostname;
+                }
+                return u.toString();
+            } catch (e) {
+                return rawUrl;
+            }
+        }
+
+        function renderWebUisBar(links) {
+            const bar = document.getElementById('web-uis-bar');
+            const list = document.getElementById('web-uis-list');
+            if (!bar || !list) return;
+
+            if (!links || links.length === 0) {
+                bar.classList.add('hidden');
+                list.innerHTML = '';
+                list.removeAttribute('data-hash');
+                return;
+            }
+
+            bar.classList.remove('hidden');
+            const hash = JSON.stringify(links);
+            if (list.getAttribute('data-hash') === hash) {
+                return;
+            }
+            list.setAttribute('data-hash', hash);
+
+            const colorClasses = {
+                'transmission': 'text-rose-400 bg-rose-500/10 border-rose-500/30 hover:border-rose-500/60 hover:bg-rose-500/20',
+                'radarr': 'text-amber-400 bg-amber-500/10 border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/20',
+                'sonarr': 'text-sky-400 bg-sky-500/10 border-sky-500/30 hover:border-sky-500/60 hover:bg-sky-500/20',
+                'lidarr': 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/60 hover:bg-emerald-500/20',
+                'prowlarr': 'text-purple-400 bg-purple-500/10 border-purple-500/30 hover:border-purple-500/60 hover:bg-purple-500/20',
+                'bazarr': 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30 hover:border-indigo-500/60 hover:bg-indigo-500/20',
+                'readarr': 'text-pink-400 bg-pink-500/10 border-pink-500/30 hover:border-pink-500/60 hover:bg-pink-500/20'
+            };
+
+            list.innerHTML = links.map(item => {
+                const resolvedUrl = resolveWebUrl(item.url);
+                const style = colorClasses[item.key.toLowerCase()] || 'text-blue-400 bg-blue-500/10 border-blue-500/30 hover:border-blue-500/60 hover:bg-blue-500/20';
+                const iconName = item.icon || 'external-link';
+                const titleText = item.description ? `${item.name} (${item.description}) - ${resolvedUrl}` : `${item.name} - ${resolvedUrl}`;
+                return `
+                    <a href="${resolvedUrl}" target="_blank" rel="noopener noreferrer" title="${titleText}" class="px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all shadow-sm group ${style}">
+                        <i data-lucide="${iconName}" class="w-3.5 h-3.5"></i>
+                        <span class="text-slate-100 group-hover:text-white">${item.name}</span>
+                        ${item.description ? `<span class="text-[10px] text-slate-400 font-normal">(${item.description})</span>` : ''}
+                        <i data-lucide="external-link" class="w-3 h-3 text-slate-500 group-hover:text-white transition-colors opacity-70 group-hover:opacity-100"></i>
+                    </a>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
 
         const STATUS_SEVERITY_MAP = {
             'error': 1,
@@ -612,11 +684,25 @@
                 const progPct = (t.progress * 100.0).toFixed(1);
                 const shortHash = t.hash ? t.hash.substring(0, 8) : t.id;
                 
-                const servarrBadge = t.servarr_app ? `
-                    <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800/40">
-                        <i data-lucide="link" class="w-2.5 h-2.5"></i> ${t.servarr_app}: ${t.servarr_title || 'Linked'}
-                    </span>
-                ` : '';
+                let servarrBadge = '';
+                if (t.servarr_app) {
+                    const servarrKey = t.servarr_app.toLowerCase();
+                    const appUrl = configuredWebUisMap[servarrKey];
+                    if (appUrl) {
+                        servarrBadge = `
+                            <a href="${resolveWebUrl(appUrl)}" target="_blank" rel="noopener noreferrer" title="Open in ${t.servarr_app}" class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 hover:text-purple-100 border border-purple-800/40 hover:border-purple-600 transition-all cursor-pointer group">
+                                <i data-lucide="link" class="w-2.5 h-2.5"></i> ${t.servarr_app}: ${t.servarr_title || 'Linked'}
+                                <i data-lucide="external-link" class="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity"></i>
+                            </a>
+                        `;
+                    } else {
+                        servarrBadge = `
+                            <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800/40">
+                                <i data-lucide="link" class="w-2.5 h-2.5"></i> ${t.servarr_app}: ${t.servarr_title || 'Linked'}
+                            </span>
+                        `;
+                    }
+                }
 
                 const privateBadge = t.is_private ? `
                     <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-800/40" title="Private Torrent - Public tracker injection blocked for swarm safety">
@@ -691,6 +777,14 @@
                 // 1. System Status
                 const statusRes = await fetch('/api/status');
                 const status = await statusRes.json();
+
+                // Update configured web UIs
+                configuredWebUis = status.web_uis || [];
+                configuredWebUisMap = {};
+                configuredWebUis.forEach(u => {
+                    if (u.key) configuredWebUisMap[u.key.toLowerCase()] = u.url;
+                });
+                renderWebUisBar(configuredWebUis);
 
                 document.getElementById('stat-torrents').innerText = status.active_torrents;
                 document.getElementById('stat-location').innerText = status.current_location || 'Unknown';

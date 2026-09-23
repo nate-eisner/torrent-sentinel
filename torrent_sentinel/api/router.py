@@ -20,7 +20,8 @@ from torrent_sentinel.api.schemas import (
     BoostEventSummary,
     AutoFailoverToggleRequest,
     VpnRotationToggleRequest,
-    RotateRequest
+    RotateRequest,
+    WebUILink
 )
 
 # Initialize logging for the web server
@@ -42,6 +43,95 @@ async def startup_event():
     daemon_instance = SentinelDaemon(adapter)
     logger.info("Launching background SentinelDaemon task...")
     asyncio.create_task(daemon_instance.run())
+
+def get_configured_web_uis() -> List[WebUILink]:
+    """Return list of configured external Web UI links (Transmission, Radarr, Sonarr, etc.)."""
+    links: List[WebUILink] = []
+
+    # Transmission
+    if settings.TRANSMISSION_WEB_ENABLED:
+        if settings.TRANSMISSION_WEB_URL and settings.TRANSMISSION_WEB_URL.strip():
+            links.append(WebUILink(
+                name="Transmission",
+                key="transmission",
+                url=settings.TRANSMISSION_WEB_URL.strip(),
+                icon="download",
+                description="Torrent Client"
+            ))
+        elif settings.TRANSMISSION_HOST and settings.TRANSMISSION_PORT:
+            links.append(WebUILink(
+                name="Transmission",
+                key="transmission",
+                url=f"http://{settings.TRANSMISSION_HOST}:{settings.TRANSMISSION_PORT}/transmission/web/",
+                icon="download",
+                description="Torrent Client"
+            ))
+
+    # Radarr
+    if settings.RADARR_URL and settings.RADARR_URL.strip():
+        links.append(WebUILink(
+            name="Radarr",
+            key="radarr",
+            url=settings.RADARR_URL.strip().rstrip("/"),
+            icon="film",
+            description="Movies"
+        ))
+
+    # Sonarr
+    if settings.SONARR_URL and settings.SONARR_URL.strip():
+        links.append(WebUILink(
+            name="Sonarr",
+            key="sonarr",
+            url=settings.SONARR_URL.strip().rstrip("/"),
+            icon="tv",
+            description="TV Series"
+        ))
+
+    # Lidarr
+    if settings.LIDARR_URL and settings.LIDARR_URL.strip():
+        links.append(WebUILink(
+            name="Lidarr",
+            key="lidarr",
+            url=settings.LIDARR_URL.strip().rstrip("/"),
+            icon="music",
+            description="Music"
+        ))
+
+    # Prowlarr
+    if settings.PROWLARR_URL and settings.PROWLARR_URL.strip():
+        links.append(WebUILink(
+            name="Prowlarr",
+            key="prowlarr",
+            url=settings.PROWLARR_URL.strip().rstrip("/"),
+            icon="search",
+            description="Indexers"
+        ))
+
+    # Bazarr
+    if settings.BAZARR_URL and settings.BAZARR_URL.strip():
+        links.append(WebUILink(
+            name="Bazarr",
+            key="bazarr",
+            url=settings.BAZARR_URL.strip().rstrip("/"),
+            icon="captions",
+            description="Subtitles"
+        ))
+
+    # Readarr
+    if settings.READARR_URL and settings.READARR_URL.strip():
+        links.append(WebUILink(
+            name="Readarr",
+            key="readarr",
+            url=settings.READARR_URL.strip().rstrip("/"),
+            icon="book-open",
+            description="Books"
+        ))
+
+    return links
+
+@app.get("/api/web-uis", response_model=List[WebUILink])
+async def get_web_uis():
+    return get_configured_web_uis()
 
 @app.get("/api/status", response_model=SystemStatus)
 async def get_status():
@@ -112,7 +202,8 @@ async def get_status():
         auto_vpn_rotation_enabled=auto_vpn_rotation,
         vpn_rotation_paused=not auto_vpn_rotation,
         cached_trackers_count=cached_trackers,
-        healthy_trackers_count=healthy_trackers
+        healthy_trackers_count=healthy_trackers,
+        web_uis=get_configured_web_uis()
     )
 
 @app.get("/api/torrents", response_model=List[TorrentStatus])

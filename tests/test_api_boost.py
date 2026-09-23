@@ -202,5 +202,78 @@ def test_api_status_vpn_rotation_paused_state(client):
             data = resp.json()
             assert data["auto_vpn_rotation_enabled"] is False
             assert data["vpn_rotation_paused"] is True
+            assert "web_uis" in data
+
+def test_get_configured_web_uis_default(client):
+    from torrent_sentinel.api.router import get_configured_web_uis
+    from torrent_sentinel.config import settings
+
+    with patch.object(settings, "TRANSMISSION_WEB_ENABLED", True), \
+         patch.object(settings, "TRANSMISSION_WEB_URL", None), \
+         patch.object(settings, "TRANSMISSION_HOST", "127.0.0.1"), \
+         patch.object(settings, "TRANSMISSION_PORT", 9091), \
+         patch.object(settings, "SONARR_URL", None), \
+         patch.object(settings, "RADARR_URL", None), \
+         patch.object(settings, "LIDARR_URL", None), \
+         patch.object(settings, "PROWLARR_URL", None), \
+         patch.object(settings, "BAZARR_URL", None), \
+         patch.object(settings, "READARR_URL", None):
+        links = get_configured_web_uis()
+        assert len(links) == 1
+        assert links[0].key == "transmission"
+        assert links[0].name == "Transmission"
+        assert links[0].url == "http://127.0.0.1:9091/transmission/web/"
+        assert links[0].icon == "download"
+
+def test_get_configured_web_uis_with_services(client):
+    from torrent_sentinel.api.router import get_configured_web_uis
+    from torrent_sentinel.config import settings
+
+    with patch.object(settings, "TRANSMISSION_WEB_ENABLED", True), \
+         patch.object(settings, "TRANSMISSION_WEB_URL", "https://transmission.local"), \
+         patch.object(settings, "SONARR_URL", "http://192.168.1.100:8989/"), \
+         patch.object(settings, "RADARR_URL", "http://192.168.1.100:7878"), \
+         patch.object(settings, "LIDARR_URL", "http://192.168.1.100:8686/"), \
+         patch.object(settings, "PROWLARR_URL", "http://192.168.1.100:9696"), \
+         patch.object(settings, "BAZARR_URL", "http://192.168.1.100:6767"), \
+         patch.object(settings, "READARR_URL", "http://192.168.1.100:8787"):
+        links = get_configured_web_uis()
+        keys = [l.key for l in links]
+        assert keys == ["transmission", "radarr", "sonarr", "lidarr", "prowlarr", "bazarr", "readarr"]
+        trans_link = next(l for l in links if l.key == "transmission")
+        assert trans_link.url == "https://transmission.local"
+        sonarr_link = next(l for l in links if l.key == "sonarr")
+        assert sonarr_link.url == "http://192.168.1.100:8989"
+        radarr_link = next(l for l in links if l.key == "radarr")
+        assert radarr_link.url == "http://192.168.1.100:7878"
+
+def test_get_configured_web_uis_transmission_disabled():
+    from torrent_sentinel.api.router import get_configured_web_uis
+    from torrent_sentinel.config import settings
+
+    with patch.object(settings, "TRANSMISSION_WEB_ENABLED", False), \
+         patch.object(settings, "SONARR_URL", None), \
+         patch.object(settings, "RADARR_URL", None), \
+         patch.object(settings, "LIDARR_URL", None), \
+         patch.object(settings, "PROWLARR_URL", None), \
+         patch.object(settings, "BAZARR_URL", None), \
+         patch.object(settings, "READARR_URL", None):
+        links = get_configured_web_uis()
+        assert len(links) == 0
+
+def test_api_web_uis_endpoint(client):
+    from torrent_sentinel.config import settings
+
+    with patch.object(settings, "TRANSMISSION_WEB_ENABLED", True), \
+         patch.object(settings, "SONARR_URL", "http://192.168.1.50:8989"), \
+         patch.object(settings, "RADARR_URL", None):
+        resp = client.get("/api/web-uis")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 2
+        keys = [item["key"] for item in data]
+        assert "transmission" in keys
+        assert "sonarr" in keys
+        assert "radarr" not in keys
 
 

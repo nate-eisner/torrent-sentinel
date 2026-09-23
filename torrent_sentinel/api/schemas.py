@@ -48,6 +48,13 @@ class ScoreboardEntry(BaseModel):
     avg_peers: float
     success_count: int
 
+class WebUILink(BaseModel):
+    name: str
+    key: str
+    url: str
+    icon: str
+    description: Optional[str] = None
+
 class SystemStatus(BaseModel):
     daemon_running: bool
     current_location: Optional[str]
@@ -59,6 +66,7 @@ class SystemStatus(BaseModel):
     vpn_rotation_paused: bool = False
     cached_trackers_count: int = 0
     healthy_trackers_count: int = 0
+    web_uis: List[WebUILink] = Field(default_factory=list)
 
 class AutoFailoverToggleRequest(BaseModel):
     enabled: bool

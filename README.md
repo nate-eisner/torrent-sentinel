@@ -227,6 +227,8 @@ All settings can be configured via environment variables prefixed with `SENTINEL
 | `SENTINEL_TRANSMISSION_PORT` | Port of Transmission RPC | `9091` |
 | `SENTINEL_TRANSMISSION_RPC_PATH` | Path of Transmission RPC | `/transmission/rpc` |
 | `SENTINEL_TRANSMISSION_AUTH` | Credentials (`username:password`) | `None` |
+| `SENTINEL_TRANSMISSION_WEB_URL` | Custom WebUI URL override for Transmission | `None` (auto-derived) |
+| `SENTINEL_TRANSMISSION_WEB_ENABLED` | Show Transmission WebUI link in dashboard | `true` |
 | `SENTINEL_LAN_NETWORK` | Subnets allowed to bypass VPN for WebUI access | `192.168.0.0/16,10.0.0.0/8,172.16.0.0/12` |
 | `SENTINEL_OLLAMA_ENABLED` | Enable LLM-based diagnostics | `true` |
 | `SENTINEL_OLLAMA_BASE_URL` | URL of your Ollama instance | `http://localhost:11434` |
@@ -250,6 +252,12 @@ All settings can be configured via environment variables prefixed with `SENTINEL
 | `SENTINEL_RADARR_API_KEY` | Radarr API Key | `None` |
 | `SENTINEL_LIDARR_URL` | URL to Lidarr (e.g. `http://192.168.1.100:8686`) | `None` |
 | `SENTINEL_LIDARR_API_KEY` | Lidarr API Key | `None` |
+| `SENTINEL_PROWLARR_URL` | URL to Prowlarr (e.g. `http://192.168.1.100:9696`) | `None` |
+| `SENTINEL_PROWLARR_API_KEY` | Prowlarr API Key | `None` |
+| `SENTINEL_BAZARR_URL` | URL to Bazarr (e.g. `http://192.168.1.100:6767`) | `None` |
+| `SENTINEL_BAZARR_API_KEY` | Bazarr API Key | `None` |
+| `SENTINEL_READARR_URL` | URL to Readarr (e.g. `http://192.168.1.100:8787`) | `None` |
+| `SENTINEL_READARR_API_KEY` | Readarr API Key | `None` |
 | `SENTINEL_ROTATION_COOLDOWN_MINUTES`| Cooldown between rotations | `15` |
 | `SENTINEL_POST_ROTATION_GRACE_PERIOD_MINUTES`| Grace period after rotation | `3` |
 | `SENTINEL_MAX_ROTATIONS_PER_HOUR` | Maximum rotations per hour | `4` |
