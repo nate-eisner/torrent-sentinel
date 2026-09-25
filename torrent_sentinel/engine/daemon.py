@@ -28,8 +28,10 @@ class SentinelDaemon:
             self.transmission,
             self.tracker_service,
             self.storage,
-            self.decision_engine.notifications
+            self.decision_engine.notifications,
+            diagnostics=self.diagnostics
         )
+
         self.vpn_adapter = vpn_adapter
         self.running = False
 

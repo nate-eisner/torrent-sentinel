@@ -11,8 +11,11 @@ from torrent_sentinel.models import (
     ServarrType,
     ServarrQueueItem,
     UnifiedTorrentItem,
-    BoostEvent
+    BoostEvent,
+    RecommendedAction,
+    TorrentJudgement
 )
+
 from torrent_sentinel.clients.transmission import TransmissionClient
 from torrent_sentinel.clients.servarr import ServarrClient
 from torrent_sentinel.services.tracker_service import TrackerService
@@ -43,12 +46,14 @@ class TorrentBooster:
         transmission: TransmissionClient,
         tracker_service: TrackerService,
         storage: Storage,
-        notifications: Optional[NotificationDispatcher] = None
+        notifications: Optional[NotificationDispatcher] = None,
+        diagnostics: Optional[Any] = None
     ):
         self.transmission = transmission
         self.trackers = tracker_service
         self.storage = storage
         self.notifications = notifications or NotificationDispatcher()
+        self.diagnostics = diagnostics
 
         self.servarr_clients: Dict[ServarrType, ServarrClient] = {}
         if settings.SONARR_URL and settings.SONARR_API_KEY:
@@ -72,6 +77,16 @@ class TorrentBooster:
 
         self.stalled_records: Dict[str, StalledRecord] = {}
         self.last_cadence_boost: Dict[str, datetime] = {}
+
+    async def is_llm_assisted_failover_enabled(self) -> bool:
+        val = await self.storage.get_setting("llm_assisted_failover_enabled")
+        if val is not None:
+            return val.lower() in ("true", "1", "yes")
+        return settings.LLM_ASSISTED_FAILOVER
+
+    async def set_llm_assisted_failover_enabled(self, enabled: bool):
+        await self.storage.set_setting("llm_assisted_failover_enabled", str(enabled).lower())
+
 
     async def is_auto_failover_enabled(self) -> bool:
         """Check dynamic setting in database, fallback to settings.py."""
@@ -128,6 +143,12 @@ class TorrentBooster:
             torrents = await self.transmission.get_torrents()
 
         servarr_queue = await self.get_servarr_queues()
+        latest_judgements = {}
+        try:
+            latest_judgements = await self.storage.get_all_latest_judgements()
+        except Exception as e:
+            logger.debug("Could not fetch latest judgements: %s", e)
+
         unified_list: List[UnifiedTorrentItem] = []
 
         for t in torrents:
@@ -161,6 +182,10 @@ class TorrentBooster:
                 state = BoostState.HEALTHY
                 status_msg = "Operating normally"
 
+            judgement = latest_judgements.get(t.hash.lower()) if t.hash else None
+            if not judgement and t.id:
+                judgement = latest_judgements.get(t.id)
+
             unified_list.append(UnifiedTorrentItem(
                 id=t.id,
                 hash=t.hash,
@@ -185,8 +210,10 @@ class TorrentBooster:
                 servarr_title=servarr_title,
                 servarr_queue_id=servarr_queue_id,
                 is_errored=client_is_errored,
-                is_private=getattr(t, "is_private", False)
+                is_private=getattr(t, "is_private", False),
+                latest_judgement=judgement
             ))
+
 
         return unified_list
 
@@ -337,11 +364,46 @@ class TorrentBooster:
                     logger.warning("Torrent '%s' probation grace period expired without seeds.", t.name)
 
                     auto_failover = await self.is_auto_failover_enabled()
-                    if auto_failover:
-                        logger.info("Auto-failover enabled; executing failover for '%s'...", t.name)
-                        await self._execute_stage_2_failover(t, rec)
-                    else:
-                        logger.info("Auto-failover is disabled; leaving '%s' in probation_expired for manual action.", t.name)
+                    llm_assisted = await self.is_llm_assisted_failover_enabled()
+
+                    # Consult LLM Judge prior to taking destructive failover action
+                    ai_postponed = False
+                    if auto_failover and llm_assisted and self.diagnostics:
+                        try:
+                            logger.info("[AI Failover Check] Consulting LLM before deciding failover for '%s'...", t.name)
+                            judgement = await self.diagnostics.judge_torrent(t, stalled_rec=rec, servarr_match=servarr_match)
+                            if judgement:
+                                await self.storage.record_judgement(judgement)
+                                if judgement.recommended_action in (RecommendedAction.WAIT, RecommendedAction.RECHECK, RecommendedAction.REANNOUNCE):
+                                    ai_postponed = True
+                                    rec.state = BoostState.BOOSTING
+                                    rec.grace_period_expires_at = now + timedelta(minutes=settings.RESCUE_GRACE_PERIOD_MINUTES)
+                                    rec.status_message = f"AI advised {judgement.recommended_action.value} ({judgement.verdict.value}): {judgement.action_explanation}"
+                                    logger.info(
+                                        "AI Judge advised %s for '%s' (verdict: %s, viability: %.0f%%). Deferring failover by %dm.",
+                                        judgement.recommended_action.value, t.name, judgement.verdict.value,
+                                        judgement.viability_score * 100, settings.RESCUE_GRACE_PERIOD_MINUTES
+                                    )
+                                    await self.add_history(
+                                        t.id, t.hash, t.name, "ai_postpone_failover",
+                                        f"AI evaluated release as {judgement.verdict.value} (viability {judgement.viability_score*100:.0f}%). Advised '{judgement.recommended_action.value}'. Extended probation by {settings.RESCUE_GRACE_PERIOD_MINUTES}m.",
+                                        servarr_app=rec.servarr_app
+                                    )
+                                    if judgement.recommended_action == RecommendedAction.RECHECK:
+                                        await self.transmission.recheck(t.id)
+                                        await self.transmission.resume(t.id)
+                                    elif judgement.recommended_action == RecommendedAction.REANNOUNCE:
+                                        await self.transmission.reannounce_torrents([t.id])
+                        except Exception as ai_err:
+                            logger.warning("Could not obtain AI judgement prior to failover: %s", ai_err)
+
+                    if not ai_postponed:
+                        if auto_failover:
+                            logger.info("Auto-failover enabled; executing failover for '%s'...", t.name)
+                            await self._execute_stage_2_failover(t, rec)
+                        else:
+                            logger.info("Auto-failover is disabled; leaving '%s' in probation_expired for manual action.", t.name)
+
 
         # Cleanup stale records
         for stale_key in list(self.stalled_records.keys()):

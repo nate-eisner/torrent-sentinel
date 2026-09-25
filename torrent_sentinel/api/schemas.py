@@ -24,6 +24,7 @@ class TorrentStatus(BaseModel):
     boosted_at: Optional[datetime] = None
     grace_period_expires_at: Optional[datetime] = None
     is_private: bool = False
+    latest_judgement: Optional[Dict[str, Any]] = None
 
 class BoostEventSummary(BaseModel):
     id: str
@@ -62,13 +63,19 @@ class SystemStatus(BaseModel):
     last_rotation: Optional[datetime]
     boost_enabled: bool = True
     auto_failover_enabled: bool = False
+    llm_assisted_failover_enabled: bool = True
     auto_vpn_rotation_enabled: bool = True
     vpn_rotation_paused: bool = False
     cached_trackers_count: int = 0
     healthy_trackers_count: int = 0
+    ollama_enabled: bool = True
+    ollama_model: Optional[str] = None
     web_uis: List[WebUILink] = Field(default_factory=list)
 
 class AutoFailoverToggleRequest(BaseModel):
+    enabled: bool
+
+class LLMAssistedFailoverToggleRequest(BaseModel):
     enabled: bool
 
 class VpnRotationToggleRequest(BaseModel):
@@ -77,6 +84,19 @@ class VpnRotationToggleRequest(BaseModel):
 
 class RotateRequest(BaseModel):
     location: Optional[str] = None
+
+class JudgeTorrentRequest(BaseModel):
+    user_prompt: Optional[str] = None
+    force_fresh: bool = False
+
+class LLMChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, str]]] = None
+
+class LLMChatResponse(BaseModel):
+    response: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
 
 
 

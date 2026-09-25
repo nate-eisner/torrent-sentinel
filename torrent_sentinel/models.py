@@ -79,6 +79,49 @@ class BoostEvent(BaseModel):
     servarr_app: Optional[ServarrType] = None
     success: bool = True
 
+class TorrentVerdict(str, Enum):
+    HEALTHY = "healthy"
+    SLOW_PROGRESS = "slow_progress"
+    STALLED_WAITING = "stalled_waiting"
+    NEEDS_BOOST = "needs_boost"
+    NEEDS_RECHECK = "needs_recheck"
+    VPN_THROTTLED = "vpn_throttled"
+    DEAD_SWARM = "dead_swarm"
+    CLIENT_ERROR = "client_error"
+
+class RecommendedAction(str, Enum):
+    WAIT = "wait"
+    BOOST_TRACKERS = "boost_trackers"
+    RECHECK = "recheck"
+    REANNOUNCE = "reannounce"
+    ROTATE_VPN = "rotate_vpn"
+    FAILOVER = "failover"
+    MANUAL_ACTION = "manual_action"
+
+class TorrentJudgement(BaseModel):
+    id: str = Field(default_factory=lambda: str(datetime.now(timezone.utc).timestamp()))
+    torrent_id: str
+    torrent_hash: str
+    torrent_name: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    verdict: TorrentVerdict
+    viability_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    recommended_action: RecommendedAction
+    action_explanation: str
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    reasoning: str
+    tracker_analysis: Optional[str] = None
+    user_prompt: Optional[str] = None
+
+class SwarmAssessment(BaseModel):
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    overall_summary: str
+    vpn_health_verdict: str
+    should_rotate_vpn: bool
+    vpn_reasoning: str
+    torrent_judgements: List[TorrentJudgement] = Field(default_factory=list)
+    recommended_actions: List[Dict[str, Any]] = Field(default_factory=list)
+
 class UnifiedTorrentItem(BaseModel):
     id: str
     hash: str
@@ -104,6 +147,7 @@ class UnifiedTorrentItem(BaseModel):
     servarr_queue_id: Optional[int] = None
     is_errored: bool = False
     is_private: bool = False
+    latest_judgement: Optional[TorrentJudgement] = None
 
 class OllamaDiagnosis(BaseModel):
     should_rotate: bool
@@ -127,3 +171,4 @@ class RotationEvent(BaseModel):
     reason: str
     peers_before: int
     peers_after: int
+

@@ -264,14 +264,17 @@
                 </div>
             </div>
 
-            <!-- Right Sidebar: Tabs for Boost Events & VPN Rotations (3 Cols on xl, 4 Cols on lg) -->
+            <!-- Right Sidebar: Tabs for Boost Events, VPN Rotations & AI Advisor (3 Cols on xl, 4 Cols on lg) -->
             <div class="lg:col-span-4 xl:col-span-3 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[850px] sticky top-6">
-                <div class="p-3 border-b border-slate-800 flex bg-slate-950/50 gap-2">
-                    <button id="tab-boost-btn" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow">
-                        <i data-lucide="zap" class="w-3.5 h-3.5"></i> Boost Events
+                <div class="p-2 border-b border-slate-800 flex bg-slate-950/50 gap-1.5">
+                    <button id="tab-boost-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow">
+                        <i data-lucide="zap" class="w-3.5 h-3.5"></i> Boosts
                     </button>
-                    <button id="tab-vpn-btn" class="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60">
-                        <i data-lucide="history" class="w-3.5 h-3.5"></i> VPN History
+                    <button id="tab-vpn-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                        <i data-lucide="history" class="w-3.5 h-3.5"></i> VPN
+                    </button>
+                    <button id="tab-advisor-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                        <i data-lucide="bot" class="w-3.5 h-3.5 text-purple-400"></i> AI Advisor
                     </button>
                 </div>
 
@@ -298,9 +301,171 @@
                         <div class="text-center text-xs text-slate-500 py-8">Loading rotation history...</div>
                     </div>
                 </div>
+
+                <!-- AI Advisor Pane -->
+                <div id="pane-advisor" class="p-4 space-y-3 overflow-y-auto flex-1 hidden flex flex-col">
+                    <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i data-lucide="bot" class="w-3.5 h-3.5 text-purple-400"></i> Swarm Diagnostics
+                            </div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">Evaluate all downloads & VPN</div>
+                        </div>
+                        <button id="assess-swarm-btn" onclick="assessAllTorrents()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/20 transition-all flex items-center gap-1 active:scale-95">
+                            <i data-lucide="zap" class="w-3 h-3"></i> Assess All
+                        </button>
+                    </div>
+
+                    <!-- Swarm Assessment Card -->
+                    <div id="swarm-assessment-card" class="hidden p-3 rounded-xl bg-slate-950/80 border border-purple-800/40 text-xs space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-purple-300 uppercase text-[10px]">Queue Verdict</span>
+                            <span id="swarm-vpn-verdict" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">VPN Healthy</span>
+                        </div>
+                        <div id="swarm-assessment-summary" class="text-slate-300 leading-snug"></div>
+                    </div>
+
+                    <!-- Chat Stream -->
+                    <div class="flex-1 bg-slate-950/60 rounded-xl border border-slate-800/80 p-3 space-y-2.5 overflow-y-auto min-h-[220px] max-h-[340px]" id="chat-messages">
+                        <div class="text-xs text-slate-400 text-center py-4 space-y-1">
+                            <i data-lucide="message-square" class="w-6 h-6 mx-auto text-slate-600"></i>
+                            <div>Ask Sentinel AI about active torrents or VPN health.</div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Prompt Chips -->
+                    <div class="flex flex-wrap gap-1 pt-0.5">
+                        <button onclick="sendQuickChatMessage('Which downloads are stuck and need action?')" class="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-colors">Which are stuck?</button>
+                        <button onclick="sendQuickChatMessage('Should I rotate the VPN gateway right now?')" class="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-colors">Rotate VPN?</button>
+                        <button onclick="sendQuickChatMessage('Are there any dead swarms that should be replaced?')" class="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-colors">Dead swarms?</button>
+                    </div>
+
+                    <!-- Chat Form -->
+                    <form id="chat-form" onsubmit="handleChatSubmit(event)" class="flex gap-1.5 pt-1">
+                        <input type="text" id="chat-input" placeholder="Ask about downloads..." class="flex-1 bg-slate-950/80 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans">
+                        <button type="submit" id="chat-send-btn" class="p-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white transition-all active:scale-95">
+                            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- AI Judge Modal -->
+    <div id="judge-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>AI Download Judge</span>
+                            <span id="judge-modal-model-badge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Ollama</span>
+                        </h3>
+                        <p id="judge-modal-title" class="text-xs text-slate-400 truncate max-w-md">Loading...</p>
+                    </div>
+                </div>
+                <button onclick="closeJudgeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                <!-- Stats Strip -->
+                <div class="grid grid-cols-4 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+                    <div>
+                        <div class="text-[10px] uppercase text-slate-500 font-bold">Progress</div>
+                        <div id="jm-stat-prog" class="text-sm font-bold text-white">0%</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase text-slate-500 font-bold">Download Speed</div>
+                        <div id="jm-stat-dl" class="text-sm font-bold text-white">0 KB/s</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase text-slate-500 font-bold">Seeds / Peers</div>
+                        <div id="jm-stat-peers" class="text-sm font-bold text-white">0 / 0</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] uppercase text-slate-500 font-bold">Current State</div>
+                        <div id="jm-stat-state" class="text-sm font-bold text-slate-300">Stalled</div>
+                    </div>
+                </div>
+
+                <!-- Custom Prompt & Presets -->
+                <div class="space-y-2">
+                    <label class="text-[11px] font-semibold text-slate-300 block">Prompt the AI or select a diagnostic question:</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="jm-custom-prompt" placeholder="e.g. Why is this stalled? Is it dead or rare? Should I keep waiting?" class="flex-1 bg-slate-950/80 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-sans">
+                        <button id="jm-run-btn" onclick="executeJudgeFromModal()" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold flex items-center gap-1.5 transition-all shadow-lg shadow-purple-600/20 active:scale-95 whitespace-nowrap">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Evaluate
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setJudgePromptChip('Why is this download stalled and what specific action is best?')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-all">Why is it stalled?</button>
+                        <button onclick="setJudgePromptChip('Is this release dead or just a rare swarm? Should I keep waiting?')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-all">Is it dead or rare?</button>
+                        <button onclick="setJudgePromptChip('Inspect tracker responses and error messages for issues.')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-all">Inspect tracker errors</button>
+                        <button onclick="setJudgePromptChip('Is our current VPN IP blocked by this swarm?')" class="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-purple-950/40 hover:text-purple-300 border border-slate-700/60 transition-all">Is VPN blocked?</button>
+                    </div>
+                </div>
+
+                <!-- Loading State -->
+                <div id="jm-loading" class="hidden py-8 flex flex-col items-center justify-center gap-3 text-slate-400">
+                    <div class="w-7 h-7 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-xs animate-pulse">Consulting Ollama LLM for swarm diagnosis...</span>
+                </div>
+
+                <!-- Results Card -->
+                <div id="jm-results" class="hidden space-y-4">
+                    <div class="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span id="jm-res-verdict-badge" class="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/40 text-purple-300 border border-purple-800/40">VIABLE</span>
+                                <span id="jm-res-confidence" class="text-[11px] text-slate-400 font-mono">Confidence: 85%</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[11px] text-slate-400 font-medium">Viability Score:</span>
+                                <span id="jm-res-score" class="text-xs font-bold font-mono text-purple-300">80%</span>
+                            </div>
+                        </div>
+
+                        <!-- Viability Bar -->
+                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                            <div id="jm-res-score-bar" class="bg-gradient-to-r from-purple-500 to-emerald-400 h-2 rounded-full transition-all" style="width: 80%"></div>
+                        </div>
+
+                        <!-- Recommended Action Box with One-Click Execution -->
+                        <div class="p-3.5 rounded-xl bg-purple-950/30 border border-purple-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <div class="text-[10px] font-bold uppercase text-purple-300 flex items-center gap-1">
+                                    <i data-lucide="zap" class="w-3 h-3"></i> Recommended Action
+                                </div>
+                                <div id="jm-res-action-expl" class="text-xs text-white mt-0.5 font-medium">Wait patiently</div>
+                            </div>
+                            <div id="jm-res-action-btn-container"></div>
+                        </div>
+
+                        <!-- Detailed Reasoning -->
+                        <div>
+                            <div class="text-[10px] font-bold uppercase text-slate-400 mb-1">AI Swarm Analysis</div>
+                            <div id="jm-res-reasoning" class="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border border-slate-800/60 whitespace-pre-line"></div>
+                        </div>
+
+                        <!-- Tracker Analysis -->
+                        <div id="jm-res-tracker-container" class="hidden">
+                            <div class="text-[10px] font-bold uppercase text-slate-400 mb-1">Tracker Breakdown</div>
+                            <div id="jm-res-trackers" class="text-[11px] text-slate-400 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // State variables
@@ -384,28 +549,40 @@
             'completed': 8
         };
 
-        // Tab handling
+        // Tab handling (Boosts, VPN History, AI Advisor)
         let activeTab = 'boost';
         const tabBoostBtn = document.getElementById('tab-boost-btn');
         const tabVpnBtn = document.getElementById('tab-vpn-btn');
+        const tabAdvisorBtn = document.getElementById('tab-advisor-btn');
         const paneBoost = document.getElementById('pane-boost');
         const paneVpn = document.getElementById('pane-vpn');
+        const paneAdvisor = document.getElementById('pane-advisor');
 
-        tabBoostBtn.addEventListener('click', () => {
-            activeTab = 'boost';
-            tabBoostBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow';
-            tabVpnBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60';
-            paneBoost.classList.remove('hidden');
-            paneVpn.classList.add('hidden');
-        });
+        function switchTab(tab) {
+            activeTab = tab;
+            if (tabBoostBtn) {
+                tabBoostBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                    (tab === 'boost' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
+            }
+            if (tabVpnBtn) {
+                tabVpnBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                    (tab === 'vpn' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
+            }
+            if (tabAdvisorBtn) {
+                tabAdvisorBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                    (tab === 'advisor' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
+            }
 
-        tabVpnBtn.addEventListener('click', () => {
-            activeTab = 'vpn';
-            tabVpnBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow';
-            tabBoostBtn.className = 'flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60';
-            paneVpn.classList.remove('hidden');
-            paneBoost.classList.add('hidden');
-        });
+            if (paneBoost) paneBoost.classList.toggle('hidden', tab !== 'boost');
+            if (paneVpn) paneVpn.classList.toggle('hidden', tab !== 'vpn');
+            if (paneAdvisor) paneAdvisor.classList.toggle('hidden', tab !== 'advisor');
+            lucide.createIcons();
+        }
+
+        if (tabBoostBtn) tabBoostBtn.addEventListener('click', () => switchTab('boost'));
+        if (tabVpnBtn) tabVpnBtn.addEventListener('click', () => switchTab('vpn'));
+        if (tabAdvisorBtn) tabAdvisorBtn.addEventListener('click', () => switchTab('advisor'));
+
 
         function showToast(message, isError = false) {
             const toast = document.getElementById('toast');
@@ -720,6 +897,25 @@
                     </button>
                 `;
 
+                let aiBadgeHtml = '';
+                if (t.latest_judgement) {
+                    const lj = t.latest_judgement;
+                    const verdict = (lj.verdict || 'stalled_waiting').toLowerCase();
+                    const vScore = Math.round((lj.viability_score || 0.5) * 100);
+                    const vColor = verdict === 'healthy' 
+                        ? 'text-emerald-400 border-emerald-500/30 bg-emerald-950/40 hover:bg-emerald-900/50' 
+                        : (verdict === 'dead_swarm' 
+                            ? 'text-red-400 border-red-500/30 bg-red-950/40 hover:bg-red-900/50' 
+                            : 'text-purple-300 border-purple-500/30 bg-purple-950/40 hover:bg-purple-900/50');
+                    aiBadgeHtml = `
+                        <div class="mt-1">
+                            <button onclick="openJudgeModal('${t.id}')" title="AI [${verdict.replace(/_/g, ' ')}]: ${lj.action_explanation || ''}\n\nClick to view full diagnosis" class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${vColor} transition-all active:scale-95 cursor-pointer">
+                                <i data-lucide="sparkles" class="w-2.5 h-2.5"></i> AI: ${verdict.replace(/_/g, ' ')} (${vScore}%)
+                            </button>
+                        </div>
+                    `;
+                }
+
                 return `
                     <tr class="hover:bg-slate-800/30 transition-colors">
                         <td class="px-5 py-4">
@@ -737,6 +933,7 @@
                             <div class="text-[11px] text-slate-500 mt-1 max-w-[150px] truncate" title="${t.status_message}">
                                 ${t.status_message}
                             </div>
+                            ${aiBadgeHtml}
                         </td>
                         <td class="px-4 py-4 whitespace-nowrap">
                             <div class="flex items-center gap-2">
@@ -756,6 +953,9 @@
                         </td>
                         <td class="px-5 py-4 whitespace-nowrap text-center">
                             <div class="flex items-center justify-center gap-1.5">
+                                <button onclick="openJudgeModal('${t.id}')" title="AI Judge - Diagnose download with LLM" class="p-1.5 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white transition-all border border-purple-500/20 active:scale-95">
+                                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                </button>
                                 ${boostActionBtn}
                                 <button onclick="recheckTorrent('${t.id}')" title="Force integrity verification & resume" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all border border-slate-700 active:scale-95">
                                     <i data-lucide="rotate-cw" class="w-4 h-4"></i>
@@ -766,6 +966,7 @@
                             </div>
                         </td>
                     </tr>
+
                 `;
             }).join('');
 
@@ -802,6 +1003,12 @@
                     badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400"></span> Daemon Stopped';
                     badge.className = 'px-3.5 py-1.5 rounded-full text-xs font-semibold bg-red-950/40 border border-red-800/60 text-red-300 flex items-center gap-2';
                 }
+
+                const modelBadge = document.getElementById('judge-modal-model-badge');
+                if (modelBadge && status.ollama_model) {
+                    modelBadge.textContent = status.ollama_model;
+                }
+
 
                 // Failover switch sync
                 const toggle = document.getElementById('failover-toggle');
@@ -1053,9 +1260,292 @@
             } finally {
                 if (btn) setTimeout(() => btn.classList.remove('animate-spin'), 1500);
             }
+        // ==================== AI JUDGE & SWARM ADVISOR ====================
+        let currentJudgeTorrentId = null;
+
+        function openJudgeModal(torrentId) {
+            currentJudgeTorrentId = torrentId;
+            const t = rawTorrents.find(item => item.id == torrentId || (item.hash && item.hash.toLowerCase() == torrentId.toLowerCase()));
+            if (!t) {
+                showToast('Torrent not found in queue', true);
+                return;
+            }
+
+            const modal = document.getElementById('judge-modal');
+            document.getElementById('judge-modal-title').textContent = t.name;
+            document.getElementById('jm-stat-prog').textContent = Math.round(t.progress * 100) + '%';
+            document.getElementById('jm-stat-dl').textContent = formatSpeed(t.rate_download);
+            document.getElementById('jm-stat-peers').textContent = `${t.num_seeds} / ${t.peers_connected}`;
+            document.getElementById('jm-stat-state').textContent = (t.boost_state || 'healthy').replace(/_/g, ' ').toUpperCase();
+            document.getElementById('jm-custom-prompt').value = '';
+
+            if (t.latest_judgement) {
+                renderJudgementResults(t.latest_judgement, t);
+            } else {
+                document.getElementById('jm-results').classList.add('hidden');
+                document.getElementById('jm-loading').classList.add('hidden');
+            }
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+            }, 10);
+            lucide.createIcons();
+        }
+
+        function closeJudgeModal() {
+            const modal = document.getElementById('judge-modal');
+            if (!modal) return;
+            modal.classList.add('opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                currentJudgeTorrentId = null;
+            }, 200);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('judge-modal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    closeJudgeModal();
+                }
+            }
+        });
+
+        function setJudgePromptChip(text) {
+            const promptInput = document.getElementById('jm-custom-prompt');
+            if (promptInput) {
+                promptInput.value = text;
+                executeJudgeFromModal();
+            }
+        }
+
+        async function executeJudgeFromModal() {
+            if (!currentJudgeTorrentId) return;
+            const t = rawTorrents.find(item => item.id == currentJudgeTorrentId || (item.hash && item.hash.toLowerCase() == currentJudgeTorrentId.toLowerCase()));
+            const customPrompt = document.getElementById('jm-custom-prompt').value.trim();
+
+            document.getElementById('jm-loading').classList.remove('hidden');
+            document.getElementById('jm-results').classList.add('hidden');
+            const runBtn = document.getElementById('jm-run-btn');
+            if (runBtn) runBtn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/torrents/${currentJudgeTorrentId}/judge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_prompt: customPrompt || null,
+                        force_fresh: true
+                    })
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.detail || 'Ollama judgement request failed');
+                }
+
+                const judgement = await res.json();
+                if (t) t.latest_judgement = judgement;
+                renderJudgementResults(judgement, t);
+                fetchData();
+            } catch (err) {
+                showToast('AI Diagnosis Error: ' + err.message, true);
+            } finally {
+                document.getElementById('jm-loading').classList.add('hidden');
+                if (runBtn) runBtn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        function renderJudgementResults(j, t) {
+            const resultsContainer = document.getElementById('jm-results');
+            resultsContainer.classList.remove('hidden');
+
+            const verdict = (j.verdict || 'stalled_waiting').toLowerCase();
+            const score = Math.round((j.viability_score || 0.5) * 100);
+            const confidence = Math.round((j.confidence || 0.7) * 100);
+
+            const verdictBadge = document.getElementById('jm-res-verdict-badge');
+            verdictBadge.textContent = verdict.replace(/_/g, ' ');
+
+            if (verdict === 'healthy') {
+                verdictBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/40 text-emerald-300 border border-emerald-800/40';
+            } else if (verdict === 'dead_swarm') {
+                verdictBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-red-900/40 text-red-300 border border-red-800/40';
+            } else {
+                verdictBadge.className = 'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/40 text-purple-300 border border-purple-800/40';
+            }
+
+            document.getElementById('jm-res-confidence').textContent = `Confidence: ${confidence}%`;
+            document.getElementById('jm-res-score').textContent = `${score}%`;
+            document.getElementById('jm-res-score-bar').style.width = `${score}%`;
+
+            document.getElementById('jm-res-action-expl').textContent = j.action_explanation || j.recommended_action;
+            document.getElementById('jm-res-reasoning').textContent = j.reasoning || 'No details provided.';
+
+            const trackerContainer = document.getElementById('jm-res-tracker-container');
+            const trackersEl = document.getElementById('jm-res-trackers');
+            if (j.tracker_analysis) {
+                trackerContainer.classList.remove('hidden');
+                trackersEl.textContent = j.tracker_analysis;
+            } else {
+                trackerContainer.classList.add('hidden');
+            }
+
+            const btnContainer = document.getElementById('jm-res-action-btn-container');
+            btnContainer.innerHTML = '';
+            const torrentId = t ? t.id : currentJudgeTorrentId;
+            const torrentName = t ? t.name : '';
+
+            const action = j.recommended_action;
+            let actBtn = '';
+            if (action === 'boost_trackers') {
+                actBtn = `<button onclick="boostTorrent('${torrentId}'); closeJudgeModal();" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow active:scale-95"><i data-lucide="zap" class="w-3.5 h-3.5"></i> Apply Boost</button>`;
+            } else if (action === 'recheck') {
+                actBtn = `<button onclick="recheckTorrent('${torrentId}'); closeJudgeModal();" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow active:scale-95"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Apply Recheck</button>`;
+            } else if (action === 'reannounce') {
+                actBtn = `<button onclick="reannounceTorrent('${torrentId}'); closeJudgeModal();" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow active:scale-95"><i data-lucide="radio" class="w-3.5 h-3.5"></i> Force Re-announce</button>`;
+            } else if (action === 'rotate_vpn') {
+                actBtn = `<button onclick="document.getElementById('rotate-btn').click(); closeJudgeModal();" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow active:scale-95"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Rotate VPN</button>`;
+            } else if (action === 'failover') {
+                actBtn = `<button onclick="failoverTorrent('${torrentId}', '${torrentName.replace(/'/g, "\\'")}'); closeJudgeModal();" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow active:scale-95"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Failover / Replace</button>`;
+            }
+            btnContainer.innerHTML = actBtn;
+            lucide.createIcons();
+        }
+
+        async function reannounceTorrent(id) {
+            try {
+                const res = await fetch(`/api/torrents/${id}/reannounce`, { method: 'POST' });
+                if (res.ok) {
+                    showToast('📡 Re-announce requested to trackers.');
+                    fetchData();
+                } else {
+                    showToast('Failed to trigger re-announce', true);
+                }
+            } catch (e) {
+                showToast('Network error: ' + e.message, true);
+            }
+        }
+
+        async function assessAllTorrents() {
+            const btn = document.getElementById('assess-swarm-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+            }
+            showToast('🧠 Consulting Ollama for queue & VPN assessment...');
+
+            try {
+                const res = await fetch('/api/llm/assess', { method: 'POST' });
+                if (!res.ok) {
+                    throw new Error('Swarm assessment request failed');
+                }
+                const data = await res.json();
+                
+                const card = document.getElementById('swarm-assessment-card');
+                const vpnVerdict = document.getElementById('swarm-vpn-verdict');
+                const summary = document.getElementById('swarm-assessment-summary');
+
+                if (card && vpnVerdict && summary) {
+                    card.classList.remove('hidden');
+                    vpnVerdict.textContent = data.should_rotate_vpn ? 'VPN ROTATE ADVISED' : 'VPN HEALTHY';
+                    vpnVerdict.className = data.should_rotate_vpn 
+                        ? 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-950/60 text-red-400 border border-red-800/40' 
+                        : 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/60 text-emerald-400 border border-emerald-800/40';
+                    
+                    summary.innerHTML = `<strong>Summary:</strong> ${data.overall_summary}<br><span class="text-slate-400 mt-1 block"><strong>VPN Reasoning:</strong> ${data.vpn_reasoning}</span>`;
+                }
+                showToast('✅ Swarm assessment complete!');
+                fetchData();
+            } catch (err) {
+                showToast('Assessment Error: ' + err.message, true);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }
+            }
+        }
+
+        let chatHistory = [];
+
+        function appendChatMessage(role, content) {
+            const stream = document.getElementById('chat-messages');
+            if (!stream) return;
+
+            const isUser = role === 'user';
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = `p-2.5 rounded-xl max-w-[85%] text-xs leading-relaxed ${
+                isUser 
+                    ? 'bg-purple-600 text-white rounded-br-none shadow-md shadow-purple-600/20' 
+                    : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-bl-none shadow'
+            }`;
+            bubble.innerText = content;
+
+            msgDiv.appendChild(bubble);
+            stream.appendChild(msgDiv);
+            stream.scrollTop = stream.scrollHeight;
+        }
+
+        async function handleChatSubmit(e) {
+            if (e) e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            input.value = '';
+            appendChatMessage('user', msg);
+            chatHistory.push({ role: 'user', content: msg });
+
+            const stream = document.getElementById('chat-messages');
+            const typingDiv = document.createElement('div');
+            typingDiv.id = 'chat-typing-indicator';
+            typingDiv.className = 'flex gap-2 justify-start';
+            typingDiv.innerHTML = '<div class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-xs flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce"></span><span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0.2s]"></span><span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0.4s]"></span></div>';
+            stream.appendChild(typingDiv);
+            stream.scrollTop = stream.scrollHeight;
+
+            try {
+                const res = await fetch('/api/llm/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: msg,
+                        history: chatHistory.slice(-6)
+                    })
+                });
+                const typingEl = document.getElementById('chat-typing-indicator');
+                if (typingEl) typingEl.remove();
+
+                if (res.ok) {
+                    const data = await res.json();
+                    appendChatMessage('assistant', data.response);
+                    chatHistory.push({ role: 'assistant', content: data.response });
+                } else {
+                    appendChatMessage('assistant', 'Sorry, I encountered an error communicating with Ollama.');
+                }
+            } catch (err) {
+                const typingEl = document.getElementById('chat-typing-indicator');
+                if (typingEl) typingEl.remove();
+                appendChatMessage('assistant', 'Network error: ' + err.message);
+            }
+        }
+
+        function sendQuickChatMessage(text) {
+            const input = document.getElementById('chat-input');
+            if (input) {
+                input.value = text;
+                handleChatSubmit();
+            }
         }
 
         // Initial setup and polling loop
+
         fetchData();
         setInterval(fetchData, 4000);
     </script>

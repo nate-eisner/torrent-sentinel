@@ -4,7 +4,15 @@ import aiosqlite
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from torrent_sentinel.config import settings
-from torrent_sentinel.models import RotationEvent, LocationProfile, BoostEvent
+from torrent_sentinel.models import (
+    RotationEvent, 
+    LocationProfile, 
+    BoostEvent, 
+    TorrentJudgement, 
+    TorrentVerdict, 
+    RecommendedAction
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +70,26 @@ class Storage:
                     value TEXT
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS torrent_judgements (
+                    id TEXT PRIMARY KEY,
+                    torrent_id TEXT,
+                    torrent_hash TEXT,
+                    torrent_name TEXT,
+                    timestamp DATETIME,
+                    verdict TEXT,
+                    viability_score REAL,
+                    recommended_action TEXT,
+                    action_explanation TEXT,
+                    confidence REAL,
+                    reasoning TEXT,
+                    tracker_analysis TEXT,
+                    user_prompt TEXT
+                )
+            """)
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_hash ON torrent_judgements(torrent_hash)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_id ON torrent_judgements(torrent_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_ts ON torrent_judgements(timestamp)")
             await db.commit()
         logger.debug("Database tables verified/created successfully.")
 
@@ -189,4 +217,108 @@ class Storage:
                 ON CONFLICT(key) DO UPDATE SET value = ?
             """, (key, value, value))
             await db.commit()
+
+    async def record_judgement(self, judgement: TorrentJudgement):
+        logger.debug("Recording LLM judgement %s for '%s' (verdict: %s, action: %s)...", 
+                     judgement.id, judgement.torrent_name, judgement.verdict, judgement.recommended_action)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO torrent_judgements 
+                (id, torrent_id, torrent_hash, torrent_name, timestamp, verdict, viability_score, 
+                 recommended_action, action_explanation, confidence, reasoning, tracker_analysis, user_prompt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    judgement.id,
+                    judgement.torrent_id,
+                    judgement.torrent_hash.lower(),
+                    judgement.torrent_name,
+                    judgement.timestamp.isoformat(),
+                    judgement.verdict.value,
+                    judgement.viability_score,
+                    judgement.recommended_action.value,
+                    judgement.action_explanation,
+                    judgement.confidence,
+                    judgement.reasoning,
+                    judgement.tracker_analysis,
+                    judgement.user_prompt
+                )
+            )
+            await db.commit()
+
+    def _row_to_judgement(self, row: aiosqlite.Row) -> TorrentJudgement:
+        return TorrentJudgement(
+            id=row["id"],
+            torrent_id=row["torrent_id"] or "",
+            torrent_hash=row["torrent_hash"] or "",
+            torrent_name=row["torrent_name"] or "",
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+            verdict=TorrentVerdict(row["verdict"]),
+            viability_score=float(row["viability_score"] if row["viability_score"] is not None else 0.5),
+            recommended_action=RecommendedAction(row["recommended_action"]),
+            action_explanation=row["action_explanation"] or "",
+            confidence=float(row["confidence"] if row["confidence"] is not None else 0.5),
+            reasoning=row["reasoning"] or "",
+            tracker_analysis=row["tracker_analysis"],
+            user_prompt=row["user_prompt"]
+        )
+
+    async def get_latest_judgement(self, torrent_identifier: str) -> Optional[TorrentJudgement]:
+        ident = torrent_identifier.lower().strip()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT * FROM torrent_judgements 
+                WHERE LOWER(torrent_hash) = ? OR torrent_id = ?
+                ORDER BY timestamp DESC LIMIT 1
+                """,
+                (ident, ident)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return self._row_to_judgement(row)
+                return None
+
+    async def get_all_latest_judgements(self) -> Dict[str, TorrentJudgement]:
+        """Returns a dict mapping lowercase torrent hash and id to their latest judgement."""
+        result: Dict[str, TorrentJudgement] = {}
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT tj.* FROM torrent_judgements tj
+                INNER JOIN (
+                    SELECT torrent_hash, MAX(timestamp) as max_ts
+                    FROM torrent_judgements
+                    GROUP BY torrent_hash
+                ) latest ON tj.torrent_hash = latest.torrent_hash AND tj.timestamp = latest.max_ts
+                ORDER BY tj.timestamp DESC
+                """
+            ) as cursor:
+                rows = await cursor.fetchall()
+                for row in rows:
+                    j = self._row_to_judgement(row)
+                    if j.torrent_hash:
+                        result[j.torrent_hash.lower()] = j
+                    if j.torrent_id:
+                        result[j.torrent_id] = j
+        return result
+
+    async def get_judgements_for_torrent(self, torrent_identifier: str, limit: int = 10) -> List[TorrentJudgement]:
+        ident = torrent_identifier.lower().strip()
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT * FROM torrent_judgements 
+                WHERE LOWER(torrent_hash) = ? OR torrent_id = ?
+                ORDER BY timestamp DESC LIMIT ?
+                """,
+                (ident, ident, limit)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_judgement(r) for r in rows]
+
 

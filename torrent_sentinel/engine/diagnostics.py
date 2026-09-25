@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from torrent_sentinel.config import settings
-from torrent_sentinel.models import TorrentInfo, OllamaDiagnosis
+from torrent_sentinel.models import TorrentInfo, OllamaDiagnosis, TorrentJudgement, SwarmAssessment
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,4 +96,88 @@ class Diagnostics:
         }
 
         return await self.ollama.diagnose_stalled_torrents(context)
+
+    def build_torrent_context(
+        self,
+        t: TorrentInfo,
+        stalled_rec: Optional[Any] = None,
+        servarr_match: Optional[Any] = None,
+        vpn_info: Optional[dict] = None
+    ) -> dict:
+        tracker_summary = []
+        if getattr(t, "tracker_stats", None):
+            for ts in t.tracker_stats:
+                tracker_summary.append({
+                    "announce": ts.get("announce", ""),
+                    "host": ts.get("host", ""),
+                    "last_result": ts.get("lastAnnounceResult", ""),
+                    "last_succeeded": ts.get("lastAnnounceSucceeded", False),
+                    "reported_seeders": ts.get("seederCount", -1),
+                    "reported_leechers": ts.get("leecherCount", -1),
+                    "last_announce_peer_count": ts.get("lastAnnouncePeerCount", 0)
+                })
+
+        servarr_info = None
+        if servarr_match:
+            q_item = servarr_match[0] if isinstance(servarr_match, tuple) else servarr_match
+            servarr_info = {
+                "app": q_item.app.value if hasattr(q_item, "app") and q_item.app else None,
+                "title": getattr(q_item, "title", None),
+                "media_title": getattr(q_item, "series_title", None) or getattr(q_item, "movie_title", None) or getattr(q_item, "album_title", None),
+                "status": getattr(q_item, "status", None),
+                "tracked_state": getattr(q_item, "tracked_download_state", None)
+            }
+
+        boost_state = stalled_rec.state.value if stalled_rec and hasattr(stalled_rec, "state") else "normal"
+        boost_count = getattr(stalled_rec, "boost_count", 0) if stalled_rec else 0
+        stalled_since = stalled_rec.first_stalled_at.isoformat() if stalled_rec and getattr(stalled_rec, "first_stalled_at", None) else None
+
+        return {
+            "id": t.id,
+            "hash": t.hash,
+            "name": t.name,
+            "status": t.status,
+            "progress_percent": round(t.progress * 100.0, 2),
+            "rate_download_kbps": round(t.rate_download / 1024.0, 2),
+            "rate_upload_kbps": round(t.rate_upload / 1024.0, 2),
+            "peers_connected": t.peers_connected,
+            "peers_sending_to_us": t.peers_sending_to_us,
+            "peers_getting_from_us": t.peers_getting_from_us,
+            "eta_seconds": t.eta,
+            "error_code": t.error,
+            "error_string": t.error_string,
+            "is_private": getattr(t, "is_private", False),
+            "boost_state": boost_state,
+            "boost_count": boost_count,
+            "stalled_since": stalled_since,
+            "trackers": tracker_summary,
+            "servarr": servarr_info,
+            "vpn_context": vpn_info or {}
+        }
+
+    async def judge_torrent(
+        self,
+        torrent: TorrentInfo,
+        stalled_rec: Optional[Any] = None,
+        servarr_match: Optional[Any] = None,
+        vpn_info: Optional[dict] = None,
+        user_prompt: Optional[str] = None
+    ):
+        context = self.build_torrent_context(torrent, stalled_rec, servarr_match, vpn_info)
+        return await self.ollama.judge_single_torrent(context, user_prompt=user_prompt)
+
+    async def assess_swarm(
+        self,
+        torrents: List[TorrentInfo],
+        stalled_records: Optional[dict] = None,
+        vpn_info: Optional[dict] = None
+    ):
+        torrents_data = []
+        for t in torrents:
+            t_key = t.hash.lower() if t.hash else t.id
+            rec = stalled_records.get(t_key) if stalled_records else None
+            torrents_data.append(self.build_torrent_context(t, stalled_rec=rec, vpn_info=vpn_info))
+
+        return await self.ollama.assess_entire_swarm(torrents_data, vpn_context=vpn_info or {})
+
 

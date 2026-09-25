@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import List, Optional
 import asyncio
+import inspect
 
 from torrent_sentinel.config import settings
 from torrent_sentinel.logging_config import setup_logging
@@ -19,10 +20,16 @@ from torrent_sentinel.api.schemas import (
     ScoreboardEntry,
     BoostEventSummary,
     AutoFailoverToggleRequest,
+    LLMAssistedFailoverToggleRequest,
     VpnRotationToggleRequest,
     RotateRequest,
+    JudgeTorrentRequest,
+    LLMChatRequest,
+    LLMChatResponse,
     WebUILink
 )
+from torrent_sentinel.models import TorrentJudgement, SwarmAssessment, RecommendedAction
+
 
 # Initialize logging for the web server
 setup_logging()
@@ -145,6 +152,7 @@ async def get_status():
     current_loc = "Unknown"
     last_rot_time = None
     auto_failover = settings.AUTO_FAILOVER_ENABLED
+    llm_assisted = settings.LLM_ASSISTED_FAILOVER
     auto_vpn_rotation = settings.AUTO_VPN_ROTATION_ENABLED
     cached_trackers = 0
     healthy_trackers = 0
@@ -156,7 +164,24 @@ async def get_status():
                 if profile:
                     current_loc = profile.name
             if hasattr(daemon_instance, "booster") and daemon_instance.booster:
-                auto_failover = await daemon_instance.booster.is_auto_failover_enabled()
+                if hasattr(daemon_instance.booster, "is_auto_failover_enabled"):
+                    try:
+                        res = daemon_instance.booster.is_auto_failover_enabled()
+                        if inspect.isawaitable(res):
+                            auto_failover = await res
+                        elif isinstance(res, bool):
+                            auto_failover = res
+                    except Exception:
+                        pass
+                if hasattr(daemon_instance.booster, "is_llm_assisted_failover_enabled"):
+                    try:
+                        res = daemon_instance.booster.is_llm_assisted_failover_enabled()
+                        if inspect.isawaitable(res):
+                            llm_assisted = await res
+                        elif isinstance(res, bool):
+                            llm_assisted = res
+                    except Exception:
+                        pass
             if hasattr(daemon_instance, "is_vpn_rotation_enabled"):
                 try:
                     res = daemon_instance.is_vpn_rotation_enabled()
@@ -182,6 +207,9 @@ async def get_status():
             val = await storage.get_setting("auto_vpn_rotation_enabled")
             if val is not None:
                 auto_vpn_rotation = (val.lower() == "true")
+            val_llm = await storage.get_setting("llm_assisted_failover_enabled")
+            if val_llm is not None:
+                llm_assisted = (val_llm.lower() in ("true", "1", "yes"))
     except Exception as e:
         logger.debug("API get_status: Error reading daemon state: %s", e)
 
@@ -199,10 +227,13 @@ async def get_status():
         last_rotation=last_rot_time,
         boost_enabled=settings.BOOST_ENABLED,
         auto_failover_enabled=auto_failover,
+        llm_assisted_failover_enabled=llm_assisted,
         auto_vpn_rotation_enabled=auto_vpn_rotation,
         vpn_rotation_paused=not auto_vpn_rotation,
         cached_trackers_count=cached_trackers,
         healthy_trackers_count=healthy_trackers,
+        ollama_enabled=settings.OLLAMA_ENABLED,
+        ollama_model=settings.OLLAMA_MODEL,
         web_uis=get_configured_web_uis()
     )
 
@@ -233,9 +264,11 @@ async def get_torrents():
                     first_stalled_at=u.first_stalled_at,
                     boosted_at=u.boosted_at,
                     grace_period_expires_at=u.grace_period_expires_at,
-                    is_private=u.is_private
+                    is_private=u.is_private,
+                    latest_judgement=u.latest_judgement.model_dump() if u.latest_judgement else None
                 ) for u in unified
             ]
+
 
         client = TransmissionClient()
         torrents = await client.get_torrents()
@@ -301,6 +334,172 @@ async def toggle_auto_failover(req: AutoFailoverToggleRequest):
     await daemon_instance.booster.set_auto_failover_enabled(req.enabled)
     logger.info("Auto-failover setting updated to: %s", req.enabled)
     return {"status": "success", "auto_failover_enabled": req.enabled}
+
+@app.post("/api/settings/llm-assisted-failover")
+async def toggle_llm_assisted_failover(req: LLMAssistedFailoverToggleRequest):
+    if not daemon_instance or not daemon_instance.booster:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    await daemon_instance.booster.set_llm_assisted_failover_enabled(req.enabled)
+    logger.info("LLM-assisted failover setting updated to: %s", req.enabled)
+    return {"status": "success", "llm_assisted_failover_enabled": req.enabled}
+
+@app.post("/api/torrents/{identifier}/judge")
+async def judge_torrent_endpoint(identifier: str, req: Optional[JudgeTorrentRequest] = None):
+    if not daemon_instance or not daemon_instance.diagnostics:
+        raise HTTPException(status_code=503, detail="Sentinel daemon diagnostics service not ready")
+
+    # 1. Check if cached judgement exists within TTL if not forced
+    if req and not req.force_fresh and not req.user_prompt:
+        cached = await storage.get_latest_judgement(identifier)
+        if cached:
+            from datetime import timezone
+            age_min = (datetime.now(timezone.utc) - cached.timestamp).total_seconds() / 60.0
+            if age_min < settings.LLM_CACHE_TTL_MINUTES:
+                return cached.model_dump()
+
+    # 2. Fetch fresh torrent data from Transmission
+    torrents = await daemon_instance.transmission.get_torrents()
+    target = next((t for t in torrents if t.id == identifier or t.hash.lower() == identifier.lower()), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Torrent '{identifier}' not found in Transmission")
+
+    # 3. Gather booster and servarr metadata
+    stalled_rec = None
+    servarr_match = None
+    vpn_info = {}
+
+    if daemon_instance.booster:
+        t_key = target.hash.lower() if target.hash else target.id
+        stalled_rec = daemon_instance.booster.stalled_records.get(t_key)
+        servarr_queue = await daemon_instance.booster.get_servarr_queues()
+        servarr_match = servarr_queue.get(target.hash.lower()) if target.hash else None
+
+    if daemon_instance.vpn_adapter:
+        prof = await daemon_instance.vpn_adapter.get_current_profile()
+        if prof:
+            vpn_info = {"current_location": prof.name, "endpoint": prof.endpoint}
+
+    # 4. Invoke LLM Judge
+    user_prompt = req.user_prompt if req else None
+    judgement = await daemon_instance.diagnostics.judge_torrent(
+        torrent=target,
+        stalled_rec=stalled_rec,
+        servarr_match=servarr_match,
+        vpn_info=vpn_info,
+        user_prompt=user_prompt
+    )
+
+    if not judgement:
+        raise HTTPException(status_code=502, detail="Failed to obtain judgement from LLM (Ollama may be offline or unresponsive)")
+
+    # 5. Persist to storage
+    await storage.record_judgement(judgement)
+
+    if stalled_rec:
+        stalled_rec.status_message = f"AI [{judgement.verdict.value}]: {judgement.action_explanation}"
+
+    return judgement.model_dump()
+
+@app.get("/api/torrents/{identifier}/judgement")
+async def get_torrent_judgement_endpoint(identifier: str):
+    judgement = await storage.get_latest_judgement(identifier)
+    if not judgement:
+        raise HTTPException(status_code=404, detail=f"No AI judgement found for torrent '{identifier}'")
+    return judgement.model_dump()
+
+@app.get("/api/torrents/{identifier}/judgements")
+async def get_torrent_judgements_history_endpoint(identifier: str, limit: int = 10):
+    judgements = await storage.get_judgements_for_torrent(identifier, limit=limit)
+    return [j.model_dump() for j in judgements]
+
+@app.post("/api/llm/assess")
+async def assess_swarm_endpoint():
+    if not daemon_instance or not daemon_instance.diagnostics:
+        raise HTTPException(status_code=503, detail="Sentinel daemon diagnostics service not ready")
+
+    torrents = await daemon_instance.transmission.get_torrents()
+    if not torrents:
+        return {
+            "overall_summary": "No active torrents in client.",
+            "vpn_health_verdict": "healthy",
+            "should_rotate_vpn": False,
+            "vpn_reasoning": "Torrent queue is empty; no swarm traffic to evaluate.",
+            "torrent_judgements": [],
+            "recommended_actions": []
+        }
+
+    vpn_info = {}
+    if daemon_instance.vpn_adapter:
+        prof = await daemon_instance.vpn_adapter.get_current_profile()
+        if prof:
+            vpn_info = {"current_location": prof.name, "endpoint": prof.endpoint}
+
+    stalled_records = daemon_instance.booster.stalled_records if daemon_instance.booster else {}
+    assessment = await daemon_instance.diagnostics.assess_swarm(
+        torrents=torrents,
+        stalled_records=stalled_records,
+        vpn_info=vpn_info
+    )
+
+    if not assessment:
+        raise HTTPException(status_code=502, detail="Failed to obtain swarm assessment from LLM")
+
+    for j in assessment.torrent_judgements:
+        await storage.record_judgement(j)
+
+    return assessment.model_dump()
+
+@app.post("/api/llm/chat", response_model=LLMChatResponse)
+async def chat_about_downloads_endpoint(req: LLMChatRequest):
+    if not daemon_instance or not daemon_instance.ollama:
+        raise HTTPException(status_code=503, detail="Ollama service not available")
+
+    torrents = []
+    try:
+        torrents = await daemon_instance.transmission.get_torrents()
+    except Exception:
+        pass
+
+    vpn_loc = "Unknown"
+    if daemon_instance.vpn_adapter:
+        prof = await daemon_instance.vpn_adapter.get_current_profile()
+        if prof:
+            vpn_loc = prof.name
+
+    stalled_count = 0
+    active_torrents_summary = []
+    for t in torrents:
+        is_stalled = (t.progress < 1.0 and (t.peers_connected < settings.MIN_SEEDS or t.rate_download < settings.MIN_DOWNLOAD_RATE_KBPS * 1024.0))
+        if is_stalled:
+            stalled_count += 1
+        active_torrents_summary.append({
+            "id": t.id,
+            "name": t.name,
+            "progress_percent": round(t.progress * 100, 1),
+            "download_kbps": round(t.rate_download / 1024, 1),
+            "peers": t.peers_connected,
+            "seeds": t.peers_sending_to_us,
+            "error": t.error_string or t.error,
+            "is_stalled": is_stalled,
+            "is_private": getattr(t, "is_private", False)
+        })
+
+    context = {
+        "current_vpn_location": vpn_loc,
+        "total_torrents": len(torrents),
+        "stalled_torrents_count": stalled_count,
+        "torrents": active_torrents_summary,
+        "auto_vpn_rotation_enabled": await daemon_instance.is_vpn_rotation_enabled(),
+        "auto_failover_enabled": await daemon_instance.booster.is_auto_failover_enabled() if daemon_instance.booster else False
+    }
+
+    reply = await daemon_instance.ollama.chat_about_downloads(
+        message=req.message,
+        context=context,
+        history=req.history
+    )
+    return LLMChatResponse(response=reply)
+
 
 @app.post("/api/settings/vpn-rotation")
 async def toggle_vpn_rotation(req: VpnRotationToggleRequest):

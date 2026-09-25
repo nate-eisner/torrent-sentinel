@@ -10,11 +10,14 @@ class Settings(BaseSettings):
     TRANSMISSION_WEB_URL: Optional[str] = None
     TRANSMISSION_WEB_ENABLED: bool = True
 
-    # Ollama
+    # Ollama & LLM Diagnostics
     OLLAMA_ENABLED: bool = True
     OLLAMA_BASE_URL: str = "http://192.168.0.10:11434"
     OLLAMA_MODEL: str = "gemma4:26b"
     OLLAMA_TIMEOUT: int = 300
+    LLM_ASSISTED_FAILOVER: bool = True
+    LLM_CACHE_TTL_MINUTES: int = 15
+
 
     # VPN Gateway (WireGuard)
     VPN_TYPE: str = "wireguard"  # wireguard, unraid_wireguard, mock
