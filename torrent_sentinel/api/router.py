@@ -467,14 +467,25 @@ async def chat_about_downloads_endpoint(req: LLMChatRequest):
             vpn_loc = prof.name
 
     stalled_count = 0
-    active_torrents_summary = []
+    downloading_count = 0
+    completed_seeding_count = 0
+    problematic_torrents = []
+    active_downloading = []
+
+    min_rate_bytes = settings.MIN_DOWNLOAD_RATE_KBPS * 1024.0
+
     for t in torrents:
-        is_stalled = (t.progress < 1.0 and (t.peers_connected < settings.MIN_SEEDS or t.rate_download < settings.MIN_DOWNLOAD_RATE_KBPS * 1024.0))
-        if is_stalled:
-            stalled_count += 1
-        active_torrents_summary.append({
+        is_complete = t.progress >= 1.0 or t.status.lower() in ("seed", "seeding", "stopped", "paused")
+        has_error = bool(t.error or t.error_string)
+        is_stalled = (t.progress < 1.0 and (t.peers_connected < settings.MIN_SEEDS or t.rate_download < min_rate_bytes))
+
+        if is_complete and not has_error:
+            completed_seeding_count += 1
+            continue
+
+        item_summary = {
             "id": t.id,
-            "name": t.name,
+            "name": t.name[:50],
             "progress_percent": round(t.progress * 100, 1),
             "download_kbps": round(t.rate_download / 1024, 1),
             "peers": t.peers_connected,
@@ -482,10 +493,26 @@ async def chat_about_downloads_endpoint(req: LLMChatRequest):
             "error": t.error_string or t.error,
             "is_stalled": is_stalled,
             "is_private": getattr(t, "is_private", False)
-        })
+        }
+
+        if is_stalled or has_error:
+            stalled_count += 1
+            problematic_torrents.append(item_summary)
+        else:
+            downloading_count += 1
+            active_downloading.append(item_summary)
+
+    # Keep top 15 stalled/problematic and top 10 downloading to strictly bound prompt size
+    active_torrents_summary = problematic_torrents[:15] + active_downloading[:10]
 
     context = {
         "current_vpn_location": vpn_loc,
+        "queue_overview": {
+            "total_torrents": len(torrents),
+            "stalled_or_errored_count": stalled_count,
+            "actively_downloading_count": downloading_count,
+            "healthy_completed_seeding_count": completed_seeding_count
+        },
         "total_torrents": len(torrents),
         "stalled_torrents_count": stalled_count,
         "torrents": active_torrents_summary,

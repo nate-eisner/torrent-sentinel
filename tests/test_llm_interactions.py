@@ -610,3 +610,93 @@ def test_cli_ask_command():
         result = runner.invoke(cli_app, ["ask", "Are any downloads stalled?"])
         assert result.exit_code == 0
         assert "No torrents are stalled." in result.output
+
+
+def test_tracker_compaction_with_many_trackers():
+    mock_trans = AsyncMock()
+    mock_ollama = AsyncMock(spec=OllamaClient)
+    diagnostics = Diagnostics(mock_trans, mock_ollama)
+
+    # 100 injected trackers
+    tracker_stats = []
+    for i in range(100):
+        tracker_stats.append({
+            "announce": f"udp://tracker{i}.example.org:1337/announce",
+            "host": f"tracker{i}.example.org",
+            "lastAnnounceResult": "Success" if i < 10 else "Connection timed out",
+            "lastAnnounceSucceeded": i < 10,
+            "seederCount": 50 - i if i < 10 else 0,
+            "leecherCount": 10,
+            "lastAnnouncePeerCount": 20
+        })
+
+    t = TorrentInfo(
+        id="1",
+        hashString="large_swarm",
+        name="Large Swarm ISO",
+        status="downloading",
+        percentDone=0.2,
+        rateDownload=50000,
+        trackerStats=tracker_stats
+    )
+
+    ctx = diagnostics.build_torrent_context(t)
+    # Even with 100 trackers, only top 5 notable trackers are preserved
+    assert len(ctx["trackers"]) <= 5
+    summary = ctx["tracker_health_summary"]
+    assert summary["total_trackers"] == 100
+    assert summary["working_trackers"] == 10
+    assert summary["failing_trackers"] == 90
+    assert summary["max_reported_seeders"] == 50
+    assert "Connection timed out" in summary["common_errors"]
+
+
+@pytest.mark.asyncio
+async def test_assess_swarm_large_queue_partitioning():
+    mock_trans = AsyncMock()
+    mock_ollama = AsyncMock(spec=OllamaClient)
+    diagnostics = Diagnostics(mock_trans, mock_ollama)
+
+    # 50 torrents: 45 completed/seeding, 5 active/stalled
+    queue = []
+    for i in range(50):
+        is_done = i >= 5
+        queue.append(TorrentInfo(
+            id=str(i),
+            hashString=f"hash{i}",
+            name=f"Torrent #{i}",
+            status="seeding" if is_done else "stalledDL",
+            percentDone=1.0 if is_done else 0.1,
+            rateDownload=0.0,
+            peersConnected=0
+        ))
+
+    mock_assessment = SwarmAssessment(
+        overall_summary="Handled 50 torrents efficiently.",
+        vpn_health_verdict="healthy",
+        should_rotate_vpn=False,
+        vpn_reasoning="Normal operations.",
+        torrent_judgements=[],
+        recommended_actions=[]
+    )
+    mock_ollama.assess_entire_swarm.return_value = mock_assessment
+
+    result = await diagnostics.assess_swarm(queue)
+    assert result == mock_assessment
+    # Verify that assess_entire_swarm was passed at most 20 active candidates
+    args, kwargs = mock_ollama.assess_entire_swarm.call_args
+    passed_torrents = args[0]
+    assert len(passed_torrents) == 5
+    vpn_ctx = kwargs["vpn_context"]
+    assert vpn_ctx["queue_overview"]["total_queue_count"] == 50
+    assert vpn_ctx["queue_overview"]["healthy_completed_seeding_count"] == 45
+
+
+def test_ollama_client_num_ctx_option():
+    client = OllamaClient()
+    from torrent_sentinel.config import settings
+
+    with patch.object(settings, "OLLAMA_NUM_CTX", 32768):
+        opts = client._build_options()
+        assert opts.get("num_ctx") == 32768
+

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://192.168.0.10:11434"
     OLLAMA_MODEL: str = "gemma4:26b"
     OLLAMA_TIMEOUT: int = 300
+    OLLAMA_NUM_CTX: Optional[int] = None
     LLM_ASSISTED_FAILOVER: bool = True
     LLM_CACHE_TTL_MINUTES: int = 15
 

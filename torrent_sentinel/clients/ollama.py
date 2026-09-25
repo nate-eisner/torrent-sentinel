@@ -35,6 +35,12 @@ class OllamaClient:
         self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
         self.model = model or settings.OLLAMA_MODEL
 
+    def _build_options(self) -> dict:
+        options = {}
+        if settings.OLLAMA_NUM_CTX:
+            options["num_ctx"] = int(settings.OLLAMA_NUM_CTX)
+        return options
+
     async def health_check(self) -> bool:
         if not settings.OLLAMA_ENABLED:
             logger.info("Ollama integration is disabled by SENTINEL_OLLAMA_ENABLED=false")
@@ -123,6 +129,9 @@ class OllamaClient:
             "stream": False,
             "format": "json"
         }
+        options = self._build_options()
+        if options:
+            prompt["options"] = options
 
         try:
             async with httpx.AsyncClient() as client:
@@ -246,6 +255,9 @@ class OllamaClient:
             "stream": False,
             "format": "json"
         }
+        options = self._build_options()
+        if options:
+            prompt["options"] = options
 
         try:
             async with httpx.AsyncClient() as client:
@@ -308,6 +320,11 @@ class OllamaClient:
         if not settings.OLLAMA_ENABLED:
             return "Ollama integration is currently disabled in Torrent Sentinel configuration."
 
+        # Format context cleanly, compacting if long
+        ctx_str = json.dumps(context, indent=2)
+        if len(ctx_str) > 30000:
+            ctx_str = json.dumps(context)
+
         messages = [
             {
                 "role": "system",
@@ -321,14 +338,17 @@ class OllamaClient:
             },
             {
                 "role": "system",
-                "content": f"Current live downloads snapshot:\n{json.dumps(context, indent=2)}"
+                "content": f"Current live downloads snapshot:\n{ctx_str}"
             }
         ]
 
         if history:
-            for h in history:
+            for h in history[-6:]:
                 if "role" in h and "content" in h:
-                    messages.append({"role": h["role"], "content": h["content"]})
+                    c = str(h["content"])
+                    if len(c) > 2000:
+                        c = c[:2000] + "... [truncated]"
+                    messages.append({"role": h["role"], "content": c})
 
         messages.append({"role": "user", "content": message})
 
@@ -337,6 +357,9 @@ class OllamaClient:
             "messages": messages,
             "stream": False
         }
+        options = self._build_options()
+        if options:
+            prompt["options"] = options
 
         try:
             async with httpx.AsyncClient() as client:
@@ -367,7 +390,7 @@ class OllamaClient:
 
         async with httpx.AsyncClient() as client:
             prompt = {
-                "model": settings.OLLAMA_MODEL,
+                "model": self.model,
                 "messages": [
                     {
                         "role": "system",
@@ -396,6 +419,9 @@ class OllamaClient:
                 "stream": False,
                 "format": "json"
             }
+            options = self._build_options()
+            if options:
+                prompt["options"] = options
 
             try:
                 response = await client.post(

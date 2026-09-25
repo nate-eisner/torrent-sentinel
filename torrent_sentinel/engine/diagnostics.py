@@ -104,18 +104,51 @@ class Diagnostics:
         servarr_match: Optional[Any] = None,
         vpn_info: Optional[dict] = None
     ) -> dict:
-        tracker_summary = []
+        notable_trackers = []
+        total_trackers = 0
+        working_count = 0
+        failing_count = 0
+        max_seeders = 0
+        unique_errors = set()
+
         if getattr(t, "tracker_stats", None):
-            for ts in t.tracker_stats:
-                tracker_summary.append({
-                    "announce": ts.get("announce", ""),
-                    "host": ts.get("host", ""),
-                    "last_result": ts.get("lastAnnounceResult", ""),
-                    "last_succeeded": ts.get("lastAnnounceSucceeded", False),
-                    "reported_seeders": ts.get("seederCount", -1),
-                    "reported_leechers": ts.get("leecherCount", -1),
-                    "last_announce_peer_count": ts.get("lastAnnouncePeerCount", 0)
-                })
+            total_trackers = len(t.tracker_stats)
+            # Sort trackers: working ones with highest seeds first, then peers
+            sorted_stats = sorted(
+                t.tracker_stats,
+                key=lambda x: (
+                    1 if x.get("lastAnnounceSucceeded", False) else 0,
+                    x.get("seederCount", -1),
+                    x.get("lastAnnouncePeerCount", 0)
+                ),
+                reverse=True
+            )
+            for ts in sorted_stats:
+                succeeded = bool(ts.get("lastAnnounceSucceeded", False))
+                seeders = ts.get("seederCount", -1)
+                leechers = ts.get("leecherCount", -1)
+                res = ts.get("lastAnnounceResult", "")
+
+                if seeders > max_seeders:
+                    max_seeders = seeders
+
+                if succeeded:
+                    working_count += 1
+                elif res and res != "Success":
+                    failing_count += 1
+                    if len(unique_errors) < 3:
+                        unique_errors.add(res[:60])
+
+                # Retain only top 5 most informative trackers to prevent token explosion
+                if len(notable_trackers) < 5:
+                    notable_trackers.append({
+                        "host": ts.get("host", ""),
+                        "last_result": res,
+                        "last_succeeded": succeeded,
+                        "reported_seeders": seeders,
+                        "reported_leechers": leechers,
+                        "last_announce_peer_count": ts.get("lastAnnouncePeerCount", 0)
+                    })
 
         servarr_info = None
         if servarr_match:
@@ -150,7 +183,14 @@ class Diagnostics:
             "boost_state": boost_state,
             "boost_count": boost_count,
             "stalled_since": stalled_since,
-            "trackers": tracker_summary,
+            "trackers": notable_trackers,
+            "tracker_health_summary": {
+                "total_trackers": total_trackers,
+                "working_trackers": working_count,
+                "failing_trackers": failing_count,
+                "max_reported_seeders": max_seeders,
+                "common_errors": list(unique_errors)
+            },
             "servarr": servarr_info,
             "vpn_context": vpn_info or {}
         }
@@ -172,12 +212,58 @@ class Diagnostics:
         stalled_records: Optional[dict] = None,
         vpn_info: Optional[dict] = None
     ):
-        torrents_data = []
+        if not torrents:
+            return None
+
+        # Prioritize active, stalled, and errored torrents to avoid blowing LLM context on dozens of finished seeders
+        active_candidates = []
+        completed_seeding_count = 0
+        total_download_bytes = 0.0
+        total_upload_bytes = 0.0
+
+        min_rate_bytes = settings.MIN_DOWNLOAD_RATE_KBPS * 1024.0
+
         for t in torrents:
+            total_download_bytes += t.rate_download
+            total_upload_bytes += t.rate_upload
+
+            is_complete = t.progress >= 1.0 or t.status.lower() in ("seed", "seeding", "stopped", "paused")
+            has_error = bool(t.error or t.error_string)
+            is_stalled = (t.progress < 1.0 and (t.peers_connected < settings.MIN_SEEDS or t.rate_download < min_rate_bytes))
+
             t_key = t.hash.lower() if t.hash else t.id
             rec = stalled_records.get(t_key) if stalled_records else None
+
+            if has_error or is_stalled or (t.progress < 1.0):
+                # Critical diagnostic candidates
+                active_candidates.append((t, rec, is_stalled, has_error))
+            else:
+                completed_seeding_count += 1
+
+        # Sort: errors first, then stalled torrents, then active downloaders
+        active_candidates.sort(key=lambda x: (
+            0 if x[3] else (1 if x[2] else 2),
+            x[0].progress
+        ))
+
+        # Select up to top 20 torrents to strictly control token payload
+        selected_candidates = active_candidates[:20] if active_candidates else [(t, None, False, False) for t in torrents[:10]]
+
+        torrents_data = []
+        for t, rec, _, _ in selected_candidates:
             torrents_data.append(self.build_torrent_context(t, stalled_rec=rec, vpn_info=vpn_info))
 
-        return await self.ollama.assess_entire_swarm(torrents_data, vpn_context=vpn_info or {})
+        enriched_vpn_context = dict(vpn_info or {})
+        enriched_vpn_context.update({
+            "queue_overview": {
+                "total_queue_count": len(torrents),
+                "active_or_stalled_evaluated": len(selected_candidates),
+                "healthy_completed_seeding_count": completed_seeding_count,
+                "total_download_kbps": round(total_download_bytes / 1024.0, 1),
+                "total_upload_kbps": round(total_upload_bytes / 1024.0, 1)
+            }
+        })
+
+        return await self.ollama.assess_entire_swarm(torrents_data, vpn_context=enriched_vpn_context)
 
 
