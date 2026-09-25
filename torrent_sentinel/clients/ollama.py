@@ -34,9 +34,60 @@ def _clean_json_content(content: str) -> str:
     return content
 
 class OllamaClient:
-    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None, storage: Optional[Any] = None):
         self.base_url = (base_url or settings.OLLAMA_BASE_URL).rstrip("/")
-        self.model = model or settings.OLLAMA_MODEL
+        self._configured_model = model or settings.OLLAMA_MODEL
+        self._runtime_model: Optional[str] = None
+        self.storage = storage
+
+    @property
+    def model(self) -> str:
+        if self._runtime_model and self._runtime_model.strip():
+            return self._runtime_model.strip()
+        return self._configured_model
+
+    @model.setter
+    def model(self, value: Optional[str]):
+        self._runtime_model = value.strip() if value and value.strip() else None
+
+    async def get_active_model(self) -> str:
+        if self.storage:
+            try:
+                db_model = await self.storage.get_ollama_model()
+                if db_model and db_model.strip():
+                    self._runtime_model = db_model.strip()
+                    return self._runtime_model
+            except Exception as e:
+                logger.warning("Could not read active model from storage: %s", e)
+        return self.model
+
+    async def set_active_model(self, model_name: str) -> str:
+        cleaned = model_name.strip()
+        self.model = cleaned
+        if self.storage:
+            try:
+                await self.storage.set_ollama_model(cleaned)
+            except Exception as e:
+                logger.error("Failed to persist active model to storage: %s", e)
+        return cleaned
+
+    async def get_available_models(self) -> List[str]:
+        """Query Ollama /api/tags to list available models on the host."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/api/tags",
+                    timeout=min(settings.OLLAMA_TIMEOUT, 10)
+                )
+                if response.status_code == 200:
+                    tags_data = response.json()
+                    models = [m.get("name") for m in tags_data.get("models", []) if m.get("name")]
+                    return models
+                else:
+                    logger.warning("Ollama /api/tags returned HTTP %d: %s", response.status_code, response.text)
+        except Exception as e:
+            logger.warning("Failed to fetch available models from Ollama at %s: %s", self.base_url, e)
+        return []
 
     def _build_options(self) -> dict:
         options = {}
@@ -93,8 +144,9 @@ class OllamaClient:
         if user_prompt and user_prompt.strip():
             user_content_parts.append(f"\nUser specific query / instructions: {user_prompt.strip()}")
 
+        active_model = await self.get_active_model()
         prompt = {
-            "model": self.model,
+            "model": active_model,
             "messages": [
                 {
                     "role": "system",
@@ -210,8 +262,9 @@ class OllamaClient:
             "vpn_context": vpn_context
         }
 
+        active_model = await self.get_active_model()
         prompt = {
-            "model": self.model,
+            "model": active_model,
             "messages": [
                 {
                     "role": "system",
@@ -355,8 +408,9 @@ class OllamaClient:
 
         messages.append({"role": "user", "content": message})
 
+        active_model = await self.get_active_model()
         prompt = {
-            "model": self.model,
+            "model": active_model,
             "messages": messages,
             "stream": False
         }
@@ -384,16 +438,17 @@ class OllamaClient:
             logger.info("Skipping AI diagnosis: Ollama is disabled in configuration.")
             return None
 
+        active_model = await self.get_active_model()
         stalled_count = len(context.get("stalled_torrents", []))
         logger.info(
             "Invoking Ollama AI diagnosis for %d stalled/slow torrent(s) using model '%s' at %s...",
-            stalled_count, settings.OLLAMA_MODEL, self.base_url
+            stalled_count, active_model, self.base_url
         )
         logger.debug("Diagnostics context sent to Ollama: %s", json.dumps(context, indent=2))
 
         async with httpx.AsyncClient() as client:
             prompt = {
-                "model": self.model,
+                "model": active_model,
                 "messages": [
                     {
                         "role": "system",
@@ -486,9 +541,10 @@ class OllamaClient:
         )
         logger.debug("Autopilot telemetry payload: %s", json.dumps(combined_payload, indent=2))
 
+        active_model = await self.get_active_model()
         async with httpx.AsyncClient() as client:
             prompt = {
-                "model": self.model,
+                "model": active_model,
                 "messages": [
                     {
                         "role": "system",

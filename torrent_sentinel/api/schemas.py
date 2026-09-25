@@ -111,6 +111,9 @@ class AutopilotStatusResponse(BaseModel):
     last_plan: Optional[Dict[str, Any]] = None
     recent_events: List[Dict[str, Any]] = Field(default_factory=list)
 
+class ModelSelectRequest(BaseModel):
+    model: str
 
-
-
+class AvailableModelsResponse(BaseModel):
+    current_model: str
+    available_models: List[str] = Field(default_factory=list)

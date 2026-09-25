@@ -252,6 +252,15 @@ class Storage:
     async def set_autopilot_mode(self, mode: str):
         await self.set_setting("autopilot_mode", mode)
 
+    async def get_ollama_model(self) -> str:
+        val = await self.get_setting("ollama_model")
+        if val and val.strip():
+            return val.strip()
+        return settings.OLLAMA_MODEL
+
+    async def set_ollama_model(self, model: str):
+        await self.set_setting("ollama_model", model.strip())
+
     async def record_autopilot_event(self, event: AutopilotEvent):
         logger.debug("Recording autopilot event %s (action: %s, mode: %s)...", event.id, event.action_type, event.mode)
         async with aiosqlite.connect(self.db_path) as db:

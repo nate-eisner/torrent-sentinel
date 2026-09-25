@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 class SentinelDaemon:
     def __init__(self, vpn_adapter: BaseVPNAdapter):
         self.transmission = TransmissionClient()
-        self.ollama = OllamaClient()
         self.storage = Storage()
+        self.ollama = OllamaClient(storage=self.storage)
         self.tracker_service = TrackerService(settings.TRACKER_LIST_URLS)
         self.diagnostics = Diagnostics(self.transmission, self.ollama)
         self.decision_engine = DecisionEngine(self.diagnostics, self.storage, vpn_adapter)
@@ -48,13 +48,14 @@ class SentinelDaemon:
 
     async def run(self):
         await self.storage.initialize()
+        active_model = await self.ollama.get_active_model()
         self.running = True
 
         logger.info("=======================================================")
         logger.info("  🚀 Torrent Sentinel Daemon Starting Up")
         logger.info("=======================================================")
         logger.info("Transmission Host    : %s:%d (path: %s)", settings.TRANSMISSION_HOST, settings.TRANSMISSION_PORT, settings.TRANSMISSION_RPC_PATH)
-        logger.info("Ollama Diagnostics   : enabled=%s (endpoint: %s, model: %s)", settings.OLLAMA_ENABLED, settings.OLLAMA_BASE_URL, settings.OLLAMA_MODEL)
+        logger.info("Ollama Diagnostics   : enabled=%s (endpoint: %s, model: %s)", settings.OLLAMA_ENABLED, settings.OLLAMA_BASE_URL, active_model)
         logger.info("VPN Adapter Type     : %s (interface: %s)", settings.VPN_TYPE, settings.VPN_INTERFACE)
         logger.info("VPN Configs Dir      : %s", settings.VPN_CONFIGS_DIR)
         logger.info("Stalled Thresholds   : min_seeds=%d, min_rate=%.1f KB/s, stalled_duration=%d min", settings.MIN_SEEDS, settings.MIN_DOWNLOAD_RATE_KBPS, settings.STALLED_DURATION_MINUTES)

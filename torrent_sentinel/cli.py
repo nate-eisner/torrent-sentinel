@@ -245,6 +245,64 @@ def ask(
 
     asyncio.run(_ask())
 
+model_app = typer.Typer(help="Manage runtime Ollama LLM model selection")
+app.add_typer(model_app, name="model")
+
+@model_app.command("status")
+def model_status_cmd():
+    """Display currently active Ollama model and list installed models."""
+    setup_logging()
+    from torrent_sentinel.clients.ollama import OllamaClient
+
+    async def _status():
+        storage = Storage()
+        await storage.initialize()
+        client = OllamaClient(storage=storage)
+        active_model = await client.get_active_model()
+        available = await client.get_available_models()
+
+        console.print(Panel(
+            f"[bold]Active Runtime Model:[/bold] [bold cyan]{active_model}[/bold cyan]\n"
+            f"[bold]Configured Fallback:[/bold] {settings.OLLAMA_MODEL}\n"
+            f"[bold]Ollama Endpoint:[/bold] {settings.OLLAMA_BASE_URL}",
+            title="🤖 Sentinel AI Model Status",
+            expand=False
+        ))
+
+        if available:
+            table = Table(title="Installed Models on Ollama Host")
+            table.add_column("Model Name", style="bold white")
+            table.add_column("Status", style="green")
+
+            for m in available:
+                is_active = (m == active_model or m.split(":")[0] == active_model)
+                status_str = "[bold green]ACTIVE[/bold green]" if is_active else "[dim]Available[/dim]"
+                table.add_row(m, status_str)
+            console.print(table)
+        else:
+            console.print("[yellow]Could not retrieve installed models from Ollama (service unreachable or empty).[/yellow]")
+
+    asyncio.run(_status())
+
+@model_app.command("set")
+def model_set_cmd(
+    model_name: str = typer.Argument(..., help="Model name (e.g. gemma2:27b, llama3.1:8b, mistral:latest)")
+):
+    """Set the active LLM model used for all AI operations."""
+    setup_logging()
+    from torrent_sentinel.clients.ollama import OllamaClient
+
+    async def _set():
+        storage = Storage()
+        await storage.initialize()
+        client = OllamaClient(storage=storage)
+        cleaned = model_name.strip()
+        await client.set_active_model(cleaned)
+        console.print(f"[bold green]✅ Active runtime model successfully set to:[/bold green] [bold cyan]{cleaned}[/bold cyan]")
+        console.print(f"[dim]Saved to persistent storage. All future judgements and autopilot cycles will use this model.[/dim]")
+
+    asyncio.run(_set())
+
 autopilot_app = typer.Typer(help="AI Autopilot Engine controls and flight log")
 app.add_typer(autopilot_app, name="autopilot")
 

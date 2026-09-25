@@ -12,6 +12,7 @@ from torrent_sentinel.engine.daemon import SentinelDaemon
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.decision import DecisionEngine
 from torrent_sentinel.clients.transmission import TransmissionClient
+from torrent_sentinel.clients.ollama import OllamaClient
 from torrent_sentinel.vpn import get_vpn_adapter
 from torrent_sentinel.api.schemas import (
     SystemStatus, 
@@ -29,7 +30,9 @@ from torrent_sentinel.api.schemas import (
     WebUILink,
     AutopilotModeToggleRequest,
     AutopilotTriggerRequest,
-    AutopilotStatusResponse
+    AutopilotStatusResponse,
+    ModelSelectRequest,
+    AvailableModelsResponse
 )
 from torrent_sentinel.models import (
     TorrentJudgement,
@@ -238,6 +241,15 @@ async def get_status():
     except Exception:
         pass
 
+    active_model = settings.OLLAMA_MODEL
+    try:
+        if daemon_instance and hasattr(daemon_instance, "ollama") and daemon_instance.ollama:
+            active_model = await daemon_instance.ollama.get_active_model()
+        else:
+            active_model = await storage.get_ollama_model()
+    except Exception:
+        pass
+
     return SystemStatus(
         daemon_running=(daemon_instance is not None and daemon_instance.running),
         current_location=current_loc,
@@ -251,7 +263,7 @@ async def get_status():
         cached_trackers_count=cached_trackers,
         healthy_trackers_count=healthy_trackers,
         ollama_enabled=settings.OLLAMA_ENABLED,
-        ollama_model=settings.OLLAMA_MODEL,
+        ollama_model=active_model,
         autopilot_mode=autopilot_mode,
         web_uis=get_configured_web_uis()
     )
@@ -545,6 +557,49 @@ async def chat_about_downloads_endpoint(req: LLMChatRequest):
         history=req.history
     )
     return LLMChatResponse(response=reply)
+
+@app.get("/api/llm/models", response_model=AvailableModelsResponse)
+async def get_available_models_endpoint():
+    current = settings.OLLAMA_MODEL
+    ollama_client = daemon_instance.ollama if (daemon_instance and daemon_instance.ollama) else OllamaClient(storage=storage)
+    try:
+        current = await ollama_client.get_active_model()
+    except Exception:
+        current = await storage.get_ollama_model()
+
+    available = []
+    try:
+        available = await ollama_client.get_available_models()
+    except Exception as e:
+        logger.warning("Could not fetch available Ollama models: %s", e)
+
+    if current and current not in available:
+        available.insert(0, current)
+
+    return AvailableModelsResponse(current_model=current, available_models=available)
+
+@app.post("/api/llm/model", response_model=AvailableModelsResponse)
+async def set_active_model_endpoint(req: ModelSelectRequest):
+    new_model = req.model.strip()
+    if not new_model:
+        raise HTTPException(status_code=400, detail="Model name cannot be empty")
+
+    await storage.set_ollama_model(new_model)
+    if daemon_instance and daemon_instance.ollama:
+        await daemon_instance.ollama.set_active_model(new_model)
+
+    ollama_client = daemon_instance.ollama if (daemon_instance and daemon_instance.ollama) else OllamaClient(storage=storage)
+    available = []
+    try:
+        available = await ollama_client.get_available_models()
+    except Exception:
+        pass
+
+    if new_model not in available:
+        available.insert(0, new_model)
+
+    logger.info("Runtime Ollama model updated to: %s", new_model)
+    return AvailableModelsResponse(current_model=new_model, available_models=available)
 
 
 @app.post("/api/settings/vpn-rotation")

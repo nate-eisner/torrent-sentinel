@@ -52,6 +52,17 @@
                         </div>
                     </div>
 
+                    <!-- Runtime Model Selector -->
+                    <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl" title="Select active LLM model for diagnostics, judge, and autopilot">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="cpu" class="w-4 h-4 text-cyan-400"></i>
+                            <span class="text-xs font-semibold text-slate-200">Model</span>
+                        </div>
+                        <select id="runtime-model-select" onchange="handleModelChange(this.value)" class="bg-slate-950 border border-slate-800 text-xs font-medium text-slate-200 rounded-lg px-2 py-0.5 outline-none hover:border-slate-700 focus:border-cyan-500 cursor-pointer max-w-[150px] truncate">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+
                     <!-- Auto-Failover Toggle -->
                     <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
                         <span class="text-xs font-medium text-slate-300">Auto Failover</span>
@@ -1072,6 +1083,9 @@
                 if (modelBadge && status.ollama_model) {
                     modelBadge.textContent = status.ollama_model;
                 }
+                if (status.ollama_model) {
+                    syncModelSelect(status.ollama_model);
+                }
 
 
                 // Failover switch sync
@@ -1243,6 +1257,109 @@
 
             } catch (err) {
                 console.error('Error fetching dashboard data:', err);
+            }
+        }
+
+        let currentRuntimeModel = '';
+
+        async function loadAvailableModels() {
+            try {
+                const res = await fetch('/api/llm/models');
+                if (!res.ok) return;
+                const data = await res.json();
+                currentRuntimeModel = data.current_model || '';
+                renderModelSelectOptions(data.available_models || [], currentRuntimeModel);
+            } catch (err) {
+                console.warn('Failed to load available models:', err);
+            }
+        }
+
+        function renderModelSelectOptions(models, activeModel) {
+            const select = document.getElementById('runtime-model-select');
+            if (!select) return;
+
+            if (document.activeElement === select) return;
+
+            const modelList = [...models];
+            if (activeModel && !modelList.includes(activeModel)) {
+                modelList.unshift(activeModel);
+            }
+
+            select.innerHTML = '';
+            if (modelList.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = activeModel || '';
+                opt.textContent = activeModel || 'No models found';
+                select.appendChild(opt);
+                return;
+            }
+
+            modelList.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                if (m === activeModel) {
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+
+            const modelBadge = document.getElementById('judge-modal-model-badge');
+            if (modelBadge && activeModel) {
+                modelBadge.textContent = activeModel;
+            }
+        }
+
+        function syncModelSelect(activeModel) {
+            if (!activeModel || activeModel === currentRuntimeModel) return;
+            currentRuntimeModel = activeModel;
+            const select = document.getElementById('runtime-model-select');
+            if (!select || document.activeElement === select) return;
+
+            let found = false;
+            for (let opt of select.options) {
+                if (opt.value === activeModel) {
+                    opt.selected = true;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found && activeModel) {
+                const opt = document.createElement('option');
+                opt.value = activeModel;
+                opt.textContent = activeModel;
+                opt.selected = true;
+                select.appendChild(opt);
+            }
+
+            const modelBadge = document.getElementById('judge-modal-model-badge');
+            if (modelBadge) {
+                modelBadge.textContent = activeModel;
+            }
+        }
+
+        async function handleModelChange(newModel) {
+            if (!newModel) return;
+            try {
+                const res = await fetch('/api/llm/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: newModel })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentRuntimeModel = data.current_model || newModel;
+                    showToast(`🤖 Active LLM switched to ${currentRuntimeModel}`);
+                    const modelBadge = document.getElementById('judge-modal-model-badge');
+                    if (modelBadge) modelBadge.textContent = currentRuntimeModel;
+                } else {
+                    const err = await res.json();
+                    showToast(`⚠️ Failed to switch model: ${err.detail || 'Unknown error'}`, true);
+                    loadAvailableModels();
+                }
+            } catch (err) {
+                showToast(`⚠️ Error switching model: ${err.message}`, true);
+                loadAvailableModels();
             }
         }
 
@@ -1778,7 +1895,7 @@
         }
 
         // Initial setup and polling loop
-
+        loadAvailableModels();
         fetchData();
         setInterval(fetchData, 4000);
     </script>
