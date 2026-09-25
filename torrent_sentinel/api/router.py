@@ -855,6 +855,14 @@ INDEX_FILE = os.path.join(STATIC_DIR, "index.html")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+FAVICON_FILE = os.path.join(STATIC_DIR, "favicon.ico")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon():
+    if os.path.exists(FAVICON_FILE):
+        return FileResponse(FAVICON_FILE, media_type="image/x-icon")
+    raise HTTPException(status_code=404, detail="Favicon not found")
+
 @app.get("/")
 async def serve_index():
     return FileResponse(INDEX_FILE)

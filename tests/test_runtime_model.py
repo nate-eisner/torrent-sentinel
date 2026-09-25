@@ -155,3 +155,13 @@ def test_cli_model_set():
     assert result.exit_code == 0
     assert "Active runtime model successfully set to" in result.stdout
     assert "mistral-nemo:12b" in result.stdout
+
+def test_favicon_endpoints(api_client):
+    res_ico = api_client.get("/favicon.ico")
+    assert res_ico.status_code == 200
+    assert "image/x-icon" in res_ico.headers.get("content-type", "")
+
+    res_svg = api_client.get("/static/favicon.svg")
+    assert res_svg.status_code == 200
+    assert "image/svg+xml" in res_svg.headers.get("content-type", "")
+
