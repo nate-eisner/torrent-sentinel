@@ -10,7 +10,10 @@ from torrent_sentinel.models import (
     TorrentJudgement, 
     TorrentVerdict, 
     RecommendedAction, 
-    SwarmAssessment
+    SwarmAssessment,
+    AutopilotPlan,
+    AutopilotAction,
+    AutopilotMode
 )
 
 logger = logging.getLogger(__name__)
@@ -457,6 +460,140 @@ class OllamaClient:
                 return None
             except Exception as e:
                 logger.error("Failed to parse or execute Ollama diagnosis: %s", e, exc_info=True)
+                return None
+
+    async def generate_autopilot_plan(
+        self, 
+        queue_telemetry: Dict[str, Any], 
+        vpn_context: Dict[str, Any],
+        mode: AutopilotMode = AutopilotMode.OFF
+    ) -> Optional[AutopilotPlan]:
+        """Generate an autonomous fleet flight plan balancing VPN health and torrent rescue actions."""
+        if not settings.OLLAMA_ENABLED:
+            logger.info("Skipping AI autopilot: Ollama is disabled in configuration.")
+            return None
+
+        combined_payload = {
+            "vpn_context": vpn_context,
+            "queue_telemetry": queue_telemetry
+        }
+
+        logger.info(
+            "Invoking Ollama AI Autopilot fleet planning (mode: %s, active: %d, stalled: %d)...",
+            mode.value,
+            queue_telemetry.get("total_active", 0),
+            queue_telemetry.get("stalled_count", 0)
+        )
+        logger.debug("Autopilot telemetry payload: %s", json.dumps(combined_payload, indent=2))
+
+        async with httpx.AsyncClient() as client:
+            prompt = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are the autonomous AI Autopilot for Torrent Sentinel. "
+                            "You manage BitTorrent fleet health, WireGuard VPN routing gateways, and Servarr media failovers.\n\n"
+                            "Your Primary Directives:\n"
+                            "1. Maximize download throughput and completion rates.\n"
+                            "2. Minimize disruption: Rotating the VPN tunnel resets connections for ALL active downloads.\n"
+                            "3. Precision Rescue: Target stalled or degraded torrents with surgical actions (boost_trackers, reannounce, recheck, failover, or wait).\n"
+                            "4. Failover is the LAST resort: Only recommend failover if a torrent is genuinely dead (0 seeds across all trackers, no progress for extended time, low viability) and Servarr can find an alternative. Private torrents must NEVER be failed over or boosted.\n"
+                            "5. VPN Health: Only set should_rotate_vpn=true if multiple downloads are simultaneously blocked/throttled or experiencing tracker timeouts characteristic of an IP shadow-ban.\n\n"
+                            "Action Types allowed: boost_trackers, reannounce, recheck, failover, wait\n\n"
+                            "Output strictly valid JSON matching this schema:\n"
+                            "{\n"
+                            '  "summary": "High-level flight summary of decisions",\n'
+                            '  "vpn_health_verdict": "healthy" | "degraded" | "blocked",\n'
+                            '  "should_rotate_vpn": boolean,\n'
+                            '  "vpn_reasoning": "Detailed explanation of VPN verdict",\n'
+                            '  "preferred_vpn_location": "string or null",\n'
+                            '  "actions": [\n'
+                            "    {\n"
+                            '      "action_type": "boost_trackers" | "reannounce" | "recheck" | "failover" | "wait",\n'
+                            '      "target_id": "string torrent ID or hash",\n'
+                            '      "target_name": "string name",\n'
+                            '      "confidence": float between 0.0 and 1.0,\n'
+                            '      "viability_score": float between 0.0 and 1.0,\n'
+                            '      "reasoning": "Detailed explanation for this specific action",\n'
+                            '      "parameters": {}\n'
+                            "    }\n"
+                            "  ]\n"
+                            "}"
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(combined_payload)
+                    }
+                ],
+                "stream": False,
+                "format": "json"
+            }
+            options = self._build_options()
+            if options:
+                prompt["options"] = options
+
+            try:
+                response = await client.post(
+                    f"{self.base_url}/api/chat",
+                    json=prompt,
+                    timeout=settings.OLLAMA_TIMEOUT
+                )
+
+                if response.status_code != 200:
+                    logger.error("Ollama Autopilot API returned error HTTP %d: %s", response.status_code, response.text)
+                    return None
+
+                response.raise_for_status()
+                result = response.json()
+                content = result.get("message", {}).get("content", "")
+                cleaned = _clean_json_content(content)
+                parsed = json.loads(cleaned)
+
+                actions: List[AutopilotAction] = []
+                for act in parsed.get("actions", []):
+                    raw_type = str(act.get("action_type", "wait")).lower()
+                    try:
+                        rec_act = RecommendedAction(raw_type)
+                    except ValueError:
+                        rec_act = RecommendedAction.WAIT
+
+                    actions.append(AutopilotAction(
+                        action_type=rec_act,
+                        target_id=str(act.get("target_id", "")),
+                        target_name=act.get("target_name"),
+                        confidence=float(act.get("confidence", 0.8)),
+                        viability_score=float(act.get("viability_score", 0.5)),
+                        reasoning=act.get("reasoning", ""),
+                        parameters=act.get("parameters") or {}
+                    ))
+
+                plan = AutopilotPlan(
+                    mode=mode,
+                    summary=parsed.get("summary", "Autopilot evaluation complete"),
+                    vpn_health_verdict=parsed.get("vpn_health_verdict", "healthy"),
+                    should_rotate_vpn=bool(parsed.get("should_rotate_vpn", False)),
+                    vpn_reasoning=parsed.get("vpn_reasoning", ""),
+                    preferred_vpn_location=parsed.get("preferred_vpn_location"),
+                    actions=actions
+                )
+
+                logger.info(
+                    "Autopilot Plan Generated [%s]: %s | VPN Rotate: %s | Actions: %d",
+                    plan.id, plan.summary, plan.should_rotate_vpn, len(plan.actions)
+                )
+                return plan
+
+            except httpx.ConnectError as e:
+                logger.error("Could not connect to Ollama service at %s for Autopilot: %s", self.base_url, e)
+                return None
+            except httpx.TimeoutException as e:
+                logger.error("Ollama Autopilot request timed out after %d seconds: %s", settings.OLLAMA_TIMEOUT, e)
+                return None
+            except Exception as e:
+                logger.error("Failed to generate or parse Ollama Autopilot plan: %s", e, exc_info=True)
                 return None
 
     async def generate_debrief(self, event_data: dict) -> str:

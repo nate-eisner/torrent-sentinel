@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     LLM_ASSISTED_FAILOVER: bool = True
     LLM_CACHE_TTL_MINUTES: int = 15
 
+    # AI Autopilot
+    AUTOPILOT_MODE: str = "off"  # off, advisory, full
+    AUTOPILOT_INTERVAL_MINUTES: int = 10
+    AUTOPILOT_MIN_CONFIDENCE_FAILOVER: float = 0.85
+    AUTOPILOT_MAX_FAILOVERS_PER_CYCLE: int = 1
+    AUTOPILOT_ROTATION_COOLDOWN_MINUTES: int = 20
+
 
     # VPN Gateway (WireGuard)
     VPN_TYPE: str = "wireguard"  # wireguard, unraid_wireguard, mock

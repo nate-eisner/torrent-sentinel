@@ -12,7 +12,9 @@ from torrent_sentinel.engine.booster import TorrentBooster
 from torrent_sentinel.engine.diagnostics import Diagnostics
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.decision import DecisionEngine
+from torrent_sentinel.engine.autopilot import AutopilotEngine
 from torrent_sentinel.vpn.base import BaseVPNAdapter
+from torrent_sentinel.models import AutopilotMode
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,15 @@ class SentinelDaemon:
             self.storage,
             self.decision_engine.notifications,
             diagnostics=self.diagnostics
+        )
+        self.autopilot = AutopilotEngine(
+            self.transmission,
+            self.booster,
+            self.decision_engine,
+            vpn_adapter,
+            self.storage,
+            self.ollama,
+            self.decision_engine.notifications
         )
 
         self.vpn_adapter = vpn_adapter
@@ -113,9 +124,17 @@ class SentinelDaemon:
                 if settings.BOOST_ENABLED:
                     await self.booster.run_cycle(torrents)
 
-                # 4. LLM-Evaluated VPN Rotation (if not paused/disabled)
-                auto_vpn_enabled = await self.is_vpn_rotation_enabled()
-                if auto_vpn_enabled:
+                # 4. AI Autopilot Fleet Orchestration (if not OFF)
+                autopilot_mode = await self.autopilot.get_mode()
+                if autopilot_mode != AutopilotMode.OFF:
+                    try:
+                        logger.debug("Cycle #%d: Running AI Autopilot cycle (mode: %s)...", cycle, autopilot_mode.value)
+                        await self.autopilot.run_autopilot_cycle(torrents)
+                    except Exception as ap_err:
+                        logger.error("AI Autopilot cycle encountered error: %s", ap_err, exc_info=True)
+
+                # 5. Classic Fallback: LLM-Evaluated VPN Rotation (if Autopilot is OFF)
+                elif await self.is_vpn_rotation_enabled():
                     target_profile = await self.decision_engine.decide_rotation(
                         torrents,
                         stalled_records=self.booster.stalled_records

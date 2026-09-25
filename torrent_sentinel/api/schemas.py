@@ -70,6 +70,7 @@ class SystemStatus(BaseModel):
     healthy_trackers_count: int = 0
     ollama_enabled: bool = True
     ollama_model: Optional[str] = None
+    autopilot_mode: str = "off"
     web_uis: List[WebUILink] = Field(default_factory=list)
 
 class AutoFailoverToggleRequest(BaseModel):
@@ -96,6 +97,19 @@ class LLMChatRequest(BaseModel):
 class LLMChatResponse(BaseModel):
     response: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class AutopilotModeToggleRequest(BaseModel):
+    mode: str  # off, advisory, full
+
+class AutopilotTriggerRequest(BaseModel):
+    force: bool = True
+    mode: Optional[str] = None
+
+class AutopilotStatusResponse(BaseModel):
+    mode: str
+    last_run: Optional[datetime] = None
+    last_plan: Optional[Dict[str, Any]] = None
+    recent_events: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 

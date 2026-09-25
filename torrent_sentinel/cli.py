@@ -245,6 +245,162 @@ def ask(
 
     asyncio.run(_ask())
 
+autopilot_app = typer.Typer(help="AI Autopilot Engine controls and flight log")
+app.add_typer(autopilot_app, name="autopilot")
+
+@autopilot_app.command("status")
+def autopilot_status_cmd():
+    """Display current Autopilot mode, last run time, and recent flight events."""
+    setup_logging()
+    from torrent_sentinel.models import AutopilotMode
+
+    async def _status():
+        storage = Storage()
+        await storage.initialize()
+        mode = await storage.get_autopilot_mode()
+        events = await storage.get_autopilot_events(limit=15)
+
+        mode_style = "bold green" if mode == "full" else ("bold blue" if mode == "advisory" else "yellow")
+        console.print(Panel(
+            f"[bold]Autopilot Mode:[/bold] [{mode_style}]{mode.upper()}[/{mode_style}]\n"
+            f"[bold]Safety Guardrails:[/bold] Cooldown: {settings.AUTOPILOT_ROTATION_COOLDOWN_MINUTES}m | Min Failover Conf: {settings.AUTOPILOT_MIN_CONFIDENCE_FAILOVER*100:.0f}% | Max Failover/Cycle: {settings.AUTOPILOT_MAX_FAILOVERS_PER_CYCLE}",
+            title="✈️ AI Autopilot Status",
+            expand=False
+        ))
+
+        if not events:
+            console.print("[dim]No flight events recorded in database yet.[/dim]")
+            return
+
+        table = Table(title="Recent Autonomous Flight Events")
+        table.add_column("Timestamp", style="cyan")
+        table.add_column("Mode", style="white")
+        table.add_column("Action", style="magenta")
+        table.add_column("Target", style="bold white")
+        table.add_column("Conf", style="green")
+        table.add_column("Status", style="yellow")
+        table.add_column("Reasoning", style="dim white")
+
+        for ev in events:
+            status_str = "[bold green]Executed[/bold green]" if ev.executed else "[dim]Simulated[/dim]"
+            table.add_row(
+                ev.timestamp.strftime("%H:%M:%S"),
+                ev.mode.upper(),
+                ev.action_type,
+                (ev.target_name or ev.target_id or "")[:25],
+                f"{ev.confidence*100:.0f}%",
+                status_str,
+                ev.reasoning[:40] + ("..." if len(ev.reasoning) > 40 else "")
+            )
+        console.print(table)
+
+    asyncio.run(_status())
+
+@autopilot_app.command("mode")
+def autopilot_mode_cmd(
+    mode: str = typer.Argument(..., help="Mode to set: 'off', 'advisory', or 'full'")
+):
+    """Set the AI Autopilot operational mode (off, advisory, full)."""
+    setup_logging()
+    from torrent_sentinel.models import AutopilotMode
+    clean_mode = mode.lower().strip()
+    if clean_mode not in ("off", "advisory", "full"):
+        console.print(f"[bold red]Invalid mode '{mode}'. Choose 'off', 'advisory', or 'full'.[/bold red]")
+        sys.exit(1)
+
+    async def _set_mode():
+        storage = Storage()
+        await storage.initialize()
+        await storage.set_autopilot_mode(clean_mode)
+        console.print(f"[bold green]✓ Autopilot mode updated to '{clean_mode.upper()}'.[/bold green]")
+
+    asyncio.run(_set_mode())
+
+@autopilot_app.command("run")
+def autopilot_run_cmd(
+    mode: Optional[str] = typer.Option(None, help="Override mode for this single flight run ('advisory' or 'full')"),
+    force: bool = typer.Option(False, "--force", help="Force run regardless of interval")
+):
+    """Trigger an autonomous flight planning and execution cycle immediately."""
+    setup_logging()
+    from torrent_sentinel.clients.transmission import TransmissionClient
+    from torrent_sentinel.clients.ollama import OllamaClient
+    from torrent_sentinel.services.tracker_service import TrackerService
+    from torrent_sentinel.engine.booster import TorrentBooster
+    from torrent_sentinel.engine.diagnostics import Diagnostics
+    from torrent_sentinel.engine.decision import DecisionEngine
+    from torrent_sentinel.engine.autopilot import AutopilotEngine
+    from torrent_sentinel.models import AutopilotMode
+
+    async def _run():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        transmission = TransmissionClient()
+        ollama = OllamaClient()
+        tracker_service = TrackerService(settings.TRACKER_LIST_URLS)
+        diagnostics = Diagnostics(transmission, ollama)
+        decision_engine = DecisionEngine(diagnostics, storage, adapter)
+        booster = TorrentBooster(transmission, tracker_service, storage, decision_engine.notifications, diagnostics)
+        autopilot = AutopilotEngine(transmission, booster, decision_engine, adapter, storage, ollama, decision_engine.notifications)
+
+        mode_override = None
+        if mode:
+            try:
+                mode_override = AutopilotMode(mode.lower().strip())
+            except ValueError:
+                console.print(f"[bold red]Invalid mode override '{mode}'.[/bold red]")
+                sys.exit(1)
+
+        torrents = await transmission.get_torrents()
+        console.print(f"[cyan]✈️ Executing AI Autopilot cycle for {len(torrents)} torrent(s)...[/cyan]")
+
+        plan = await autopilot.run_autopilot_cycle(
+            torrents=torrents,
+            force=force,
+            mode_override=mode_override
+        )
+
+        if not plan:
+            console.print("[yellow]Autopilot cycle did not produce a plan (off or skipped).[/yellow]")
+            return
+
+        console.print(Panel(
+            f"[bold]Summary:[/bold] {plan.summary}\n"
+            f"[bold]Mode:[/bold] {plan.mode.value.upper()}\n"
+            f"[bold]VPN Verdict:[/bold] {plan.vpn_health_verdict.upper()}\n"
+            f"[bold]Rotate VPN:[/bold] {'[bold red]YES[/bold red]' if plan.should_rotate_vpn else '[bold green]NO[/bold green]'}\n"
+            f"[bold]VPN Reasoning:[/bold] {plan.vpn_reasoning}"
+            + (f"\n[bold yellow]Guardrails Applied:[/bold yellow] {', '.join(plan.guardrails_applied)}" if plan.guardrails_applied else ""),
+            title="✈️ Autopilot Flight Plan",
+            expand=False
+        ))
+
+        if plan.actions:
+            table = Table(title="Flight Actions")
+            table.add_column("Type", style="magenta")
+            table.add_column("Target", style="bold white")
+            table.add_column("Conf", style="green")
+            table.add_column("Viability", style="cyan")
+            table.add_column("Executed", style="yellow")
+            table.add_column("Result / Reason", style="dim white")
+
+            for a in plan.actions:
+                status_str = "[bold green]YES[/bold green]" if a.executed else "[dim]NO (Simulated)[/dim]"
+                table.add_row(
+                    a.action_type.value,
+                    (a.target_name or a.target_id or "")[:30],
+                    f"{a.confidence*100:.0f}%",
+                    f"{a.viability_score*100:.0f}%",
+                    status_str,
+                    (a.execution_result or a.reasoning)[:50]
+                )
+            console.print(table)
+        else:
+            console.print("[green]No actions required; fleet is operating optimally.[/green]")
+
+    asyncio.run(_run())
+
 if __name__ == "__main__":
     app()
 

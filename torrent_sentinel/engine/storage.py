@@ -10,7 +10,9 @@ from torrent_sentinel.models import (
     BoostEvent, 
     TorrentJudgement, 
     TorrentVerdict, 
-    RecommendedAction
+    RecommendedAction,
+    AutopilotEvent,
+    AutopilotMode
 )
 
 
@@ -90,6 +92,24 @@ class Storage:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_hash ON torrent_judgements(torrent_hash)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_id ON torrent_judgements(torrent_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_judgements_ts ON torrent_judgements(timestamp)")
+
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS autopilot_events (
+                    id TEXT PRIMARY KEY,
+                    timestamp DATETIME,
+                    plan_id TEXT,
+                    mode TEXT,
+                    action_type TEXT,
+                    target_id TEXT,
+                    target_name TEXT,
+                    confidence REAL,
+                    viability_score REAL,
+                    reasoning TEXT,
+                    executed BOOLEAN,
+                    execution_result TEXT
+                )
+            """)
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_autopilot_events_ts ON autopilot_events(timestamp)")
             await db.commit()
         logger.debug("Database tables verified/created successfully.")
 
@@ -135,10 +155,15 @@ class Storage:
         except Exception:
             return []
 
-    async def get_history(self) -> List[RotationEvent]:
+    async def get_history(self, limit: Optional[int] = None) -> List[RotationEvent]:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM rotation_events ORDER BY timestamp DESC") as cursor:
+            query = "SELECT * FROM rotation_events ORDER BY timestamp DESC"
+            params = ()
+            if limit is not None:
+                query += " LIMIT ?"
+                params = (limit,)
+            async with db.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 events = [RotationEvent(
                     id=row["id"],
@@ -217,6 +242,67 @@ class Storage:
                 ON CONFLICT(key) DO UPDATE SET value = ?
             """, (key, value, value))
             await db.commit()
+
+    async def get_autopilot_mode(self) -> str:
+        val = await self.get_setting("autopilot_mode")
+        if val:
+            return val
+        return settings.AUTOPILOT_MODE
+
+    async def set_autopilot_mode(self, mode: str):
+        await self.set_setting("autopilot_mode", mode)
+
+    async def record_autopilot_event(self, event: AutopilotEvent):
+        logger.debug("Recording autopilot event %s (action: %s, mode: %s)...", event.id, event.action_type, event.mode)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO autopilot_events 
+                (id, timestamp, plan_id, mode, action_type, target_id, target_name, confidence, viability_score, reasoning, executed, execution_result)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.timestamp.isoformat(),
+                    event.plan_id,
+                    event.mode,
+                    event.action_type,
+                    event.target_id,
+                    event.target_name,
+                    event.confidence,
+                    event.viability_score,
+                    event.reasoning,
+                    event.executed,
+                    event.execution_result
+                )
+            )
+            await db.commit()
+
+    async def get_autopilot_events(self, limit: int = 50) -> List[AutopilotEvent]:
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM autopilot_events ORDER BY timestamp DESC LIMIT ?", 
+                (limit,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                events = []
+                for row in rows:
+                    events.append(AutopilotEvent(
+                        id=row["id"],
+                        timestamp=datetime.fromisoformat(row["timestamp"]),
+                        plan_id=row["plan_id"],
+                        mode=row["mode"] or "off",
+                        action_type=row["action_type"] or "",
+                        target_id=row["target_id"],
+                        target_name=row["target_name"],
+                        confidence=float(row["confidence"] if row["confidence"] is not None else 0.0),
+                        viability_score=float(row["viability_score"] if row["viability_score"] is not None else 0.0),
+                        reasoning=row["reasoning"] or "",
+                        executed=bool(row["executed"]),
+                        execution_result=row["execution_result"]
+                    ))
+                return events
 
     async def record_judgement(self, judgement: TorrentJudgement):
         logger.debug("Recording LLM judgement %s for '%s' (verdict: %s, action: %s)...", 

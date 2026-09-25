@@ -26,9 +26,17 @@ from torrent_sentinel.api.schemas import (
     JudgeTorrentRequest,
     LLMChatRequest,
     LLMChatResponse,
-    WebUILink
+    WebUILink,
+    AutopilotModeToggleRequest,
+    AutopilotTriggerRequest,
+    AutopilotStatusResponse
 )
-from torrent_sentinel.models import TorrentJudgement, SwarmAssessment, RecommendedAction
+from torrent_sentinel.models import (
+    TorrentJudgement,
+    SwarmAssessment,
+    RecommendedAction,
+    AutopilotMode
+)
 
 
 # Initialize logging for the web server
@@ -220,6 +228,16 @@ async def get_status():
     except Exception:
         pass
 
+    autopilot_mode = "off"
+    try:
+        if daemon_instance and hasattr(daemon_instance, "autopilot"):
+            ap_mode_enum = await daemon_instance.autopilot.get_mode()
+            autopilot_mode = ap_mode_enum.value
+        else:
+            autopilot_mode = await storage.get_autopilot_mode()
+    except Exception:
+        pass
+
     return SystemStatus(
         daemon_running=(daemon_instance is not None and daemon_instance.running),
         current_location=current_loc,
@@ -234,6 +252,7 @@ async def get_status():
         healthy_trackers_count=healthy_trackers,
         ollama_enabled=settings.OLLAMA_ENABLED,
         ollama_model=settings.OLLAMA_MODEL,
+        autopilot_mode=autopilot_mode,
         web_uis=get_configured_web_uis()
     )
 
@@ -697,6 +716,82 @@ async def trigger_rotation(background_tasks: BackgroundTasks, request: Optional[
 
     background_tasks.add_task(run_rotation, preferred)
     return {"message": "Rotation triggered"}
+
+@app.get("/api/autopilot/status")
+async def get_autopilot_status():
+    mode = "off"
+    last_run = None
+    last_plan = None
+    if daemon_instance and hasattr(daemon_instance, "autopilot"):
+        ap = daemon_instance.autopilot
+        mode_enum = await ap.get_mode()
+        mode = mode_enum.value
+        last_run = ap.last_run_time
+        if ap.last_plan:
+            last_plan = ap.last_plan.model_dump()
+    else:
+        mode = await storage.get_autopilot_mode()
+
+    events = await storage.get_autopilot_events(limit=25)
+    return {
+        "status": "success",
+        "mode": mode,
+        "last_run": last_run,
+        "last_plan": last_plan,
+        "recent_events": [e.model_dump() for e in events]
+    }
+
+@app.post("/api/autopilot/mode")
+async def set_autopilot_mode_endpoint(req: AutopilotModeToggleRequest):
+    try:
+        mode_enum = AutopilotMode(req.mode.lower().strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid autopilot mode: {req.mode}. Allowed: off, advisory, full")
+
+    if daemon_instance and hasattr(daemon_instance, "autopilot"):
+        await daemon_instance.autopilot.set_mode(mode_enum)
+    else:
+        await storage.set_autopilot_mode(mode_enum.value)
+
+    logger.info("API: Autopilot mode changed to '%s'", mode_enum.value)
+    return {"status": "success", "mode": mode_enum.value}
+
+@app.post("/api/autopilot/trigger")
+async def trigger_autopilot_cycle(req: Optional[AutopilotTriggerRequest] = None):
+    if not daemon_instance or not hasattr(daemon_instance, "autopilot"):
+        raise HTTPException(status_code=503, detail="Daemon or Autopilot engine not ready")
+
+    mode_override = None
+    if req and req.mode:
+        try:
+            mode_override = AutopilotMode(req.mode.lower().strip())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid mode override: {req.mode}")
+
+    force = req.force if req else True
+    torrents = await daemon_instance.transmission.get_torrents()
+    plan = await daemon_instance.autopilot.run_autopilot_cycle(
+        torrents=torrents,
+        force=force,
+        mode_override=mode_override
+    )
+
+    if not plan:
+        return {"status": "skipped_or_failed", "message": "Autopilot cycle skipped or produced no plan"}
+
+    return {
+        "status": "success",
+        "plan": plan.model_dump()
+    }
+
+@app.get("/api/autopilot/events")
+async def get_autopilot_events_endpoint(limit: int = 50):
+    events = await storage.get_autopilot_events(limit=limit)
+    return {
+        "status": "success",
+        "total": len(events),
+        "events": [e.model_dump() for e in events]
+    }
 
 # Serve the frontend static files
 import os

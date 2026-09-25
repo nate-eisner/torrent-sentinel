@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Union, Dict, Any
@@ -171,4 +172,48 @@ class RotationEvent(BaseModel):
     reason: str
     peers_before: int
     peers_after: int
+
+class AutopilotMode(str, Enum):
+    OFF = "off"
+    ADVISORY = "advisory"
+    FULL = "full"
+
+class AutopilotAction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    action_type: RecommendedAction
+    target_id: Optional[str] = None
+    target_name: Optional[str] = None
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    viability_score: float = Field(default=0.5, ge=0.0, le=1.0)
+    reasoning: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    executed: bool = False
+    execution_result: Optional[str] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AutopilotPlan(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    mode: AutopilotMode = AutopilotMode.OFF
+    summary: str
+    vpn_health_verdict: str = "healthy"
+    should_rotate_vpn: bool = False
+    vpn_reasoning: str = ""
+    preferred_vpn_location: Optional[str] = None
+    actions: List[AutopilotAction] = Field(default_factory=list)
+    guardrails_applied: List[str] = Field(default_factory=list)
+
+class AutopilotEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    plan_id: Optional[str] = None
+    mode: str
+    action_type: str
+    target_id: Optional[str] = None
+    target_name: Optional[str] = None
+    confidence: float = 0.0
+    viability_score: float = 0.0
+    reasoning: str
+    executed: bool = False
+    execution_result: Optional[str] = None
 

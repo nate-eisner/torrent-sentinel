@@ -39,6 +39,19 @@
                         <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span> Checking status...
                     </div>
                     
+                    <!-- AI Autopilot Mode Selector -->
+                    <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+                        <div class="flex items-center gap-1.5">
+                            <i data-lucide="plane-takeoff" class="w-4 h-4 text-purple-400"></i>
+                            <span class="text-xs font-semibold text-slate-200">Autopilot</span>
+                        </div>
+                        <div class="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-semibold" id="autopilot-mode-btns">
+                            <button id="ap-btn-off" onclick="setAutopilotMode('off')" class="px-2 py-0.5 rounded transition-all text-slate-400 hover:text-white">Off</button>
+                            <button id="ap-btn-advisory" onclick="setAutopilotMode('advisory')" class="px-2 py-0.5 rounded transition-all text-slate-400 hover:text-white">Advisory</button>
+                            <button id="ap-btn-full" onclick="setAutopilotMode('full')" class="px-2 py-0.5 rounded transition-all text-slate-400 hover:text-white">Full</button>
+                        </div>
+                    </div>
+
                     <!-- Auto-Failover Toggle -->
                     <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl">
                         <span class="text-xs font-medium text-slate-300">Auto Failover</span>
@@ -266,15 +279,18 @@
 
             <!-- Right Sidebar: Tabs for Boost Events, VPN Rotations & AI Advisor (3 Cols on xl, 4 Cols on lg) -->
             <div class="lg:col-span-4 xl:col-span-3 bg-slate-900/80 backdrop-blur rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex flex-col max-h-[850px] sticky top-6">
-                <div class="p-2 border-b border-slate-800 flex bg-slate-950/50 gap-1.5">
-                    <button id="tab-boost-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-blue-600 text-white shadow">
+                <div class="p-2 border-b border-slate-800 flex bg-slate-950/50 gap-1">
+                    <button id="tab-boost-btn" class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 bg-blue-600 text-white shadow">
                         <i data-lucide="zap" class="w-3.5 h-3.5"></i> Boosts
                     </button>
-                    <button id="tab-vpn-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                    <button id="tab-vpn-btn" class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 text-slate-400 hover:text-white hover:bg-slate-800/60">
                         <i data-lucide="history" class="w-3.5 h-3.5"></i> VPN
                     </button>
-                    <button id="tab-advisor-btn" class="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60">
-                        <i data-lucide="bot" class="w-3.5 h-3.5 text-purple-400"></i> AI Advisor
+                    <button id="tab-advisor-btn" class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                        <i data-lucide="bot" class="w-3.5 h-3.5 text-purple-400"></i> Advisor
+                    </button>
+                    <button id="tab-autopilot-btn" class="flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                        <i data-lucide="plane-takeoff" class="w-3.5 h-3.5 text-amber-400"></i> Autopilot
                     </button>
                 </div>
 
@@ -347,6 +363,46 @@
                             <i data-lucide="send" class="w-3.5 h-3.5"></i>
                         </button>
                     </form>
+                </div>
+
+                <!-- Autopilot Flight Deck & Flight Log Pane -->
+                <div id="pane-autopilot" class="p-4 space-y-3 overflow-y-auto flex-1 hidden flex flex-col">
+                    <!-- Flight Deck Controls Card -->
+                    <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <span id="autopilot-pane-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+                                Mode: <span id="autopilot-pane-mode-text" class="text-slate-300 font-semibold uppercase">Off</span>
+                            </div>
+                            <div id="autopilot-last-run-text" class="text-[11px] text-slate-400 mt-0.5">No recent runs</div>
+                        </div>
+                        <button id="run-autopilot-btn" onclick="triggerAutopilotRun()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/20 transition-all flex items-center gap-1.5 active:scale-95">
+                            <i data-lucide="play" class="w-3.5 h-3.5"></i> Run Now
+                        </button>
+                    </div>
+
+                    <!-- Latest Flight Plan Card -->
+                    <div id="autopilot-plan-card" class="hidden p-3.5 rounded-xl bg-slate-950/90 border border-purple-800/40 text-xs space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-purple-300 uppercase text-[10px] flex items-center gap-1">
+                                <i data-lucide="navigation" class="w-3 h-3 text-purple-400"></i> Latest Plan
+                            </span>
+                            <span id="ap-plan-vpn-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">VPN Healthy</span>
+                        </div>
+                        <div id="ap-plan-summary" class="text-slate-200 leading-snug font-medium"></div>
+                        <div id="ap-plan-guardrails" class="hidden text-[10px] text-amber-300 bg-amber-950/40 border border-amber-800/40 p-1.5 rounded"></div>
+                    </div>
+
+                    <!-- Autonomous Flight Log (Audit Trail) -->
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-500"></i> Flight Log
+                        </span>
+                        <span id="ap-events-count" class="text-[10px] font-mono text-slate-500">0 events</span>
+                    </div>
+                    <div id="autopilot-events-list" class="space-y-2 flex-1 overflow-y-auto min-h-[220px]">
+                        <div class="text-center text-xs text-slate-500 py-8">Loading flight log...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -549,39 +605,47 @@
             'completed': 8
         };
 
-        // Tab handling (Boosts, VPN History, AI Advisor)
+        // Tab handling (Boosts, VPN History, AI Advisor, AI Autopilot)
         let activeTab = 'boost';
         const tabBoostBtn = document.getElementById('tab-boost-btn');
         const tabVpnBtn = document.getElementById('tab-vpn-btn');
         const tabAdvisorBtn = document.getElementById('tab-advisor-btn');
+        const tabAutopilotBtn = document.getElementById('tab-autopilot-btn');
         const paneBoost = document.getElementById('pane-boost');
         const paneVpn = document.getElementById('pane-vpn');
         const paneAdvisor = document.getElementById('pane-advisor');
+        const paneAutopilot = document.getElementById('pane-autopilot');
 
         function switchTab(tab) {
             activeTab = tab;
             if (tabBoostBtn) {
-                tabBoostBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                tabBoostBtn.className = 'flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ' + 
                     (tab === 'boost' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
             }
             if (tabVpnBtn) {
-                tabVpnBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                tabVpnBtn.className = 'flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ' + 
                     (tab === 'vpn' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
             }
             if (tabAdvisorBtn) {
-                tabAdvisorBtn.className = 'flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ' + 
+                tabAdvisorBtn.className = 'flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ' + 
                     (tab === 'advisor' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
+            }
+            if (tabAutopilotBtn) {
+                tabAutopilotBtn.className = 'flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ' + 
+                    (tab === 'autopilot' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60');
             }
 
             if (paneBoost) paneBoost.classList.toggle('hidden', tab !== 'boost');
             if (paneVpn) paneVpn.classList.toggle('hidden', tab !== 'vpn');
             if (paneAdvisor) paneAdvisor.classList.toggle('hidden', tab !== 'advisor');
+            if (paneAutopilot) paneAutopilot.classList.toggle('hidden', tab !== 'autopilot');
             lucide.createIcons();
         }
 
         if (tabBoostBtn) tabBoostBtn.addEventListener('click', () => switchTab('boost'));
         if (tabVpnBtn) tabVpnBtn.addEventListener('click', () => switchTab('vpn'));
         if (tabAdvisorBtn) tabAdvisorBtn.addEventListener('click', () => switchTab('advisor'));
+        if (tabAutopilotBtn) tabAutopilotBtn.addEventListener('click', () => switchTab('autopilot'));
 
 
         function showToast(message, isError = false) {
@@ -1108,11 +1172,178 @@
                     `).join('');
                 }
 
+                // 5. Autopilot Status & Flight Log
+                try {
+                    const apRes = await fetch('/api/autopilot/status');
+                    if (apRes.ok) {
+                        const apData = await apRes.json();
+                        const currentApMode = apData.mode || 'off';
+                        updateAutopilotUI(currentApMode);
+
+                        const lastRunEl = document.getElementById('autopilot-last-run-text');
+                        if (lastRunEl) {
+                            lastRunEl.textContent = apData.last_run 
+                                ? `Last run: ${new Date(apData.last_run).toLocaleTimeString()}`
+                                : 'No recent runs';
+                        }
+
+                        if (apData.last_plan) {
+                            renderAutopilotPlan(apData.last_plan);
+                        }
+
+                        const eventsList = document.getElementById('autopilot-events-list');
+                        const countEl = document.getElementById('ap-events-count');
+                        const events = apData.recent_events || [];
+                        if (countEl) countEl.textContent = `${events.length} events`;
+
+                        if (eventsList) {
+                            if (events.length === 0) {
+                                eventsList.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">No flight events logged yet.</div>';
+                            } else {
+                                eventsList.innerHTML = events.map(ev => {
+                                    const actionColors = {
+                                        'boost_trackers': 'bg-blue-900/40 text-blue-300 border-blue-800/40',
+                                        'reannounce': 'bg-sky-900/40 text-sky-300 border-sky-800/40',
+                                        'recheck': 'bg-amber-900/40 text-amber-300 border-amber-800/40',
+                                        'failover': 'bg-red-900/40 text-red-300 border-red-800/40',
+                                        'rotate_vpn': 'bg-emerald-900/40 text-emerald-300 border-emerald-800/40',
+                                        'wait': 'bg-slate-800 text-slate-400 border-slate-700/60'
+                                    };
+                                    const color = actionColors[ev.action_type] || 'bg-purple-900/40 text-purple-300 border-purple-800/40';
+                                    const execBadge = ev.executed 
+                                        ? '<span class="text-emerald-400 font-semibold">✓ Executed</span>'
+                                        : '<span class="text-slate-400 italic">Simulated</span>';
+                                    const confPct = Math.round((ev.confidence || 0) * 100);
+
+                                    return `
+                                        <div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-slate-700 transition-colors text-xs space-y-1">
+                                            <div class="flex justify-between items-center text-[10px]">
+                                                <span class="font-mono text-slate-500">${new Date(ev.timestamp).toLocaleTimeString()}</span>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span class="px-1.5 py-0.5 rounded uppercase font-bold text-[9px] border ${color}">${ev.action_type.replace(/_/g, ' ')}</span>
+                                                    <span class="text-slate-400 font-mono">${confPct}% conf</span>
+                                                </div>
+                                            </div>
+                                            <div class="font-semibold text-white truncate" title="${ev.target_name || ev.target_id || ''}">${ev.target_name || ev.target_id || 'System'}</div>
+                                            <div class="text-[11px] text-slate-400 leading-snug">${ev.reasoning || ''}</div>
+                                            <div class="text-[10px] pt-0.5 flex justify-between items-center text-slate-500 border-t border-slate-900">
+                                                <span>${execBadge}</span>
+                                                <span class="truncate max-w-[140px] text-slate-400" title="${ev.execution_result || ''}">${ev.execution_result || ''}</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('');
+                            }
+                        }
+                    }
+                } catch (_) {}
+
                 // Re-initialize Lucide icons
                 lucide.createIcons();
 
             } catch (err) {
                 console.error('Error fetching dashboard data:', err);
+            }
+        }
+
+        async function setAutopilotMode(mode) {
+            try {
+                const res = await fetch('/api/autopilot/mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+                if (res.ok) {
+                    updateAutopilotUI(mode);
+                    showToast(`🚀 Autopilot mode set to ${mode.toUpperCase()}`);
+                    fetchData();
+                } else {
+                    showToast('Failed to change Autopilot mode', true);
+                }
+            } catch (e) {
+                showToast('Error changing mode: ' + e.message, true);
+            }
+        }
+
+        function updateAutopilotUI(mode) {
+            const modes = ['off', 'advisory', 'full'];
+            modes.forEach(m => {
+                const btn = document.getElementById(`ap-btn-${m}`);
+                if (!btn) return;
+                if (m === mode) {
+                    btn.className = m === 'full' 
+                        ? 'px-2 py-0.5 rounded transition-all bg-purple-600 text-white shadow font-bold'
+                        : (m === 'advisory' ? 'px-2 py-0.5 rounded transition-all bg-blue-600 text-white shadow font-bold' : 'px-2 py-0.5 rounded transition-all bg-slate-700 text-white font-bold');
+                } else {
+                    btn.className = 'px-2 py-0.5 rounded transition-all text-slate-400 hover:text-white';
+                }
+            });
+
+            const paneModeText = document.getElementById('autopilot-pane-mode-text');
+            const paneDot = document.getElementById('autopilot-pane-dot');
+            if (paneModeText) {
+                paneModeText.textContent = mode.toUpperCase();
+                paneModeText.className = mode === 'full' ? 'text-purple-400 font-bold' : (mode === 'advisory' ? 'text-blue-400 font-bold' : 'text-slate-400 font-medium');
+            }
+            if (paneDot) {
+                paneDot.className = mode === 'full' ? 'w-2 h-2 rounded-full bg-purple-400 animate-pulse' : (mode === 'advisory' ? 'w-2 h-2 rounded-full bg-blue-400 animate-pulse' : 'w-2 h-2 rounded-full bg-slate-500');
+            }
+        }
+
+        async function triggerAutopilotRun() {
+            const btn = document.getElementById('run-autopilot-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+            }
+            showToast('🚀 Running AI Autopilot cycle...');
+            try {
+                const res = await fetch('/api/autopilot/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: true })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showToast('✅ AI Autopilot flight cycle completed!');
+                    if (data.plan) {
+                        renderAutopilotPlan(data.plan);
+                    }
+                    fetchData();
+                } else {
+                    showToast(data.message || 'Autopilot run skipped or failed', true);
+                }
+            } catch (e) {
+                showToast('Autopilot error: ' + e.message, true);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }
+            }
+        }
+
+        function renderAutopilotPlan(plan) {
+            const card = document.getElementById('autopilot-plan-card');
+            const vpnBadge = document.getElementById('ap-plan-vpn-badge');
+            const summary = document.getElementById('ap-plan-summary');
+            const guardrails = document.getElementById('ap-plan-guardrails');
+            if (!card || !vpnBadge || !summary) return;
+
+            card.classList.remove('hidden');
+            const vpnVerdict = (plan.vpn_health_verdict || 'healthy').toLowerCase();
+            vpnBadge.textContent = `VPN: ${vpnVerdict.toUpperCase()}${plan.should_rotate_vpn ? ' (ROTATE)' : ''}`;
+            vpnBadge.className = plan.should_rotate_vpn
+                ? 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-950/60 text-red-400 border border-red-800/40'
+                : 'px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/60 text-emerald-400 border border-emerald-800/40';
+
+            summary.innerHTML = `${plan.summary || 'Flight evaluation complete.'}<span class="text-slate-400 block mt-1 text-[11px]">${plan.vpn_reasoning || ''}</span>`;
+
+            if (guardrails && plan.guardrails_applied && plan.guardrails_applied.length > 0) {
+                guardrails.classList.remove('hidden');
+                guardrails.innerHTML = `<strong>Guardrails Applied:</strong><br>${plan.guardrails_applied.map(g => `• ${g}`).join('<br>')}`;
+            } else if (guardrails) {
+                guardrails.classList.add('hidden');
             }
         }
 
