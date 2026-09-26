@@ -528,16 +528,23 @@ class OllamaClient:
             logger.info("Skipping AI autopilot: Ollama is disabled in configuration.")
             return None
 
+        # Strictly bound candidate torrents payload to avoid context window overflow
+        bounded_telemetry = dict(queue_telemetry)
+        if "torrents" in bounded_telemetry and isinstance(bounded_telemetry["torrents"], list):
+            if len(bounded_telemetry["torrents"]) > 25:
+                bounded_telemetry["torrents"] = bounded_telemetry["torrents"][:25]
+
         combined_payload = {
             "vpn_context": vpn_context,
-            "queue_telemetry": queue_telemetry
+            "queue_telemetry": bounded_telemetry
         }
 
         logger.info(
-            "Invoking Ollama AI Autopilot fleet planning (mode: %s, active: %d, stalled: %d)...",
+            "Invoking Ollama AI Autopilot fleet planning (mode: %s, active: %d, stalled: %d, candidates: %d)...",
             mode.value,
             queue_telemetry.get("total_active", 0),
-            queue_telemetry.get("stalled_count", 0)
+            queue_telemetry.get("stalled_count", 0),
+            len(bounded_telemetry.get("torrents", []))
         )
         logger.debug("Autopilot telemetry payload: %s", json.dumps(combined_payload, indent=2))
 

@@ -373,3 +373,69 @@ def test_cli_autopilot_commands():
     res = runner.invoke(cli_app, ["autopilot", "mode", "advisory"])
     assert res.exit_code == 0
     assert "ADVISORY" in res.output
+
+@pytest.mark.asyncio
+async def test_autopilot_telemetry_payload_bounded(setup_autopilot):
+    ap, mock_trans, mock_booster, mock_decision, mock_vpn, mock_ollama = setup_autopilot
+    
+    # Generate 100 torrents: 50 seeding (complete), 30 stalled, 20 downloading
+    test_torrents = []
+    # 50 completed seeders
+    for i in range(50):
+        test_torrents.append(TorrentInfo(
+            id=str(1000 + i),
+            hash=f"hash_seeder_{i}",
+            name=f"Completed Seeder {i}",
+            status="seeding",
+            progress=1.0,
+            rate_download=0.0,
+            rate_upload=50000.0,
+            peers_connected=10,
+            peers_sending_to_us=0,
+            eta=0
+        ))
+    # 30 stalled torrents
+    for i in range(30):
+        test_torrents.append(TorrentInfo(
+            id=str(2000 + i),
+            hash=f"hash_stalled_{i}",
+            name=f"Stalled Torrent {i}",
+            status="downloading",
+            progress=0.1,
+            rate_download=0.0,
+            rate_upload=0.0,
+            peers_connected=0,
+            peers_sending_to_us=0,
+            eta=999999
+        ))
+    # 20 active downloading torrents
+    for i in range(20):
+        test_torrents.append(TorrentInfo(
+            id=str(3000 + i),
+            hash=f"hash_downloading_{i}",
+            name=f"Downloading Torrent {i}",
+            status="downloading",
+            progress=0.5,
+            rate_download=500000.0,
+            rate_upload=10000.0,
+            peers_connected=25,
+            peers_sending_to_us=15,
+            eta=120
+        ))
+
+    telemetry, vpn_ctx = await ap.build_fleet_telemetry(test_torrents)
+
+    assert telemetry["total_active"] == 100
+    assert telemetry["seeding_count"] == 50
+    assert telemetry["stalled_count"] == 30
+    assert telemetry["downloading_count"] == 50
+
+    # Ensure torrents list sent in telemetry is strictly bounded to <= 25 candidates
+    candidates = telemetry["torrents"]
+    assert len(candidates) <= 25
+    assert len(candidates) == 25  # 15 stalled + 10 downloading
+
+    # Verify no completed seeders leaked into candidate list
+    candidate_names = [c["name"] for c in candidates]
+    assert not any("Completed Seeder" in name for name in candidate_names)
+

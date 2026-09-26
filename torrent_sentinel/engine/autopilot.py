@@ -101,24 +101,39 @@ class AutopilotEngine:
 
         # 2. Queue Telemetry
         total_active = len(torrents)
-        downloading_count = sum(1 for t in torrents if t.status in ("downloading", "download"))
-        seeding_count = sum(1 for t in torrents if t.status in ("seeding", "seed"))
+        downloading_count = 0
+        seeding_count = 0
+        stalled_count = 0
         total_dl_rate = sum(getattr(t, "rate_download", 0.0) / 1024.0 for t in torrents)
+        total_ul_rate = sum(getattr(t, "rate_upload", 0.0) / 1024.0 for t in torrents)
 
-        # Identify stalled/problematic torrents
-        stalled_candidates = []
+        problematic_candidates = []
+        active_downloading = []
+
         for t in torrents:
             t_key = t.hash.lower() if t.hash else t.id
             rec = self.booster.stalled_records.get(t_key)
             is_stalled = False
             stalled_min = 0.0
             dl_rate_kbps = getattr(t, "rate_download", 0.0) / 1024.0
+            has_error = bool(getattr(t, "error", None) or getattr(t, "error_string", None))
+            is_complete = (getattr(t, "progress", 0.0) >= 1.0 or getattr(t, "status", "").lower() in ("seed", "seeding", "stopped", "paused"))
 
             if rec:
                 is_stalled = True
                 stalled_min = round((now - rec.first_stalled_at).total_seconds() / 60.0, 1)
-            elif t.status in ("downloading", "download") and dl_rate_kbps < settings.MIN_DOWNLOAD_RATE_KBPS:
+            elif not is_complete and (dl_rate_kbps < settings.MIN_DOWNLOAD_RATE_KBPS or getattr(t, "peers_connected", 0) < settings.MIN_SEEDS):
                 is_stalled = True
+
+            if is_stalled:
+                stalled_count += 1
+
+            if is_complete and not has_error:
+                seeding_count += 1
+                # Healthy completed seeding torrents do not need individual LLM review
+                continue
+            elif not is_complete:
+                downloading_count += 1
 
             # Compact tracker summary
             tracker_summary = {"total": 0, "active": 0, "errors": 0}
@@ -139,10 +154,10 @@ class AutopilotEngine:
 
             eta_min = round(t.eta / 60.0, 1) if getattr(t, "eta", None) else None
 
-            stalled_candidates.append({
-                "id": t.id,
+            candidate = {
+                "id": str(t.id),
                 "hash": t.hash,
-                "name": t.name,
+                "name": (t.name or "Unknown")[:60],
                 "status": t.status,
                 "progress_pct": round(t.progress * 100, 1),
                 "download_rate_kbps": round(dl_rate_kbps, 1),
@@ -157,15 +172,32 @@ class AutopilotEngine:
                 "servarr_app": rec.servarr_app.value if rec and rec.servarr_app else None,
                 "rescue_state": rec.state.value if rec else None,
                 "boost_count": rec.boost_count if rec else 0
-            })
+            }
+
+            if has_error or is_stalled:
+                problematic_candidates.append(candidate)
+            else:
+                active_downloading.append(candidate)
+
+        # Sort problematic candidates: errors first, then longest stalled duration
+        problematic_candidates.sort(
+            key=lambda c: (
+                0 if c.get("rescue_state") == "error" else 1,
+                -c.get("stalled_minutes", 0.0)
+            )
+        )
+
+        # Cap candidates to strictly bound context tokens (max 15 problematic + max 10 active downloading)
+        evaluated_torrents = problematic_candidates[:15] + active_downloading[:10]
 
         queue_telemetry = {
             "total_active": total_active,
             "downloading_count": downloading_count,
             "seeding_count": seeding_count,
-            "stalled_count": sum(1 for c in stalled_candidates if c["is_stalled"]),
+            "stalled_count": stalled_count,
             "total_download_rate_kbps": round(total_dl_rate, 1),
-            "torrents": stalled_candidates
+            "total_upload_rate_kbps": round(total_ul_rate, 1),
+            "torrents": evaluated_torrents
         }
 
         return queue_telemetry, vpn_context

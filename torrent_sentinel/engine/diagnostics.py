@@ -87,8 +87,8 @@ class Diagnostics:
                 "average_downloading_peers": round(avg_downloading_peers, 1),
                 "total_downloading_peers": total_downloading_peers
             },
-            "stalled_torrents": stalled_torrents,
-            "downloading_torrents": downloading_torrents,
+            "stalled_torrents": stalled_torrents[:20],
+            "downloading_torrents": downloading_torrents[:10],
             "thresholds": {
                 "min_seeds": settings.MIN_SEEDS,
                 "min_rate_kbps": settings.MIN_DOWNLOAD_RATE_KBPS
