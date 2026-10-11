@@ -11,6 +11,7 @@ from torrent_sentinel.logging_config import setup_logging
 from torrent_sentinel.engine.daemon import SentinelDaemon
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.decision import DecisionEngine
+from torrent_sentinel.engine.diagnostics import summarize_torrent_trackers
 from torrent_sentinel.clients.transmission import TransmissionClient
 from torrent_sentinel.clients.ollama import OllamaClient
 from torrent_sentinel.vpn import get_vpn_adapter
@@ -36,7 +37,10 @@ from torrent_sentinel.api.schemas import (
     VpnToggleRequest,
     OffVpnStartRequest,
     OffVpnStatusResponse,
-    VpnStatusResponse
+    VpnStatusResponse,
+    PortTestResponse,
+    TrackerItemDiagnostic,
+    TorrentTrackersResponse
 )
 from torrent_sentinel.models import (
     TorrentJudgement,
@@ -366,7 +370,8 @@ async def get_torrents():
                     grace_period_expires_at=u.grace_period_expires_at,
                     is_private=u.is_private,
                     is_off_vpn=getattr(u, "is_off_vpn", False),
-                    latest_judgement=u.latest_judgement.model_dump() if u.latest_judgement else None
+                    latest_judgement=u.latest_judgement.model_dump() if u.latest_judgement else None,
+                    tracker_summary=getattr(u, "tracker_summary", None) or summarize_torrent_trackers(getattr(u, "tracker_stats", []) or [])
                 ) for u in unified
             ]
 
@@ -389,12 +394,46 @@ async def get_torrents():
                 num_leechs=max(t.peers_connected - t.peers_sending_to_us, 0),
                 error=(t.error_string or f"Error {t.error}") if (t.error is not None and t.error != 0 and str(t.error) != "0") else None,
                 is_private=getattr(t, "is_private", False),
-                is_off_vpn=bool(off_state and off_state.is_active and (t.id == off_state.torrent_id or (off_state.torrent_hash and t.hash.lower() == off_state.torrent_hash.lower())))
+                is_off_vpn=bool(off_state and off_state.is_active and (t.id == off_state.torrent_id or (off_state.torrent_hash and t.hash.lower() == off_state.torrent_hash.lower()))),
+                tracker_summary=summarize_torrent_trackers(getattr(t, "tracker_stats", []) or [])
             ) for t in torrents
         ]
     except Exception as e:
         logger.error("API get_torrents failed: %s", e)
         return []
+
+@app.get("/api/network/port-test", response_model=PortTestResponse)
+async def test_network_port():
+    client = TransmissionClient()
+    res = await client.port_test()
+    return PortTestResponse(
+        status=res.get("status", "success"),
+        port_open=bool(res.get("port_open", False)),
+        port=res.get("port"),
+        message=res.get("message", "")
+    )
+
+@app.get("/api/torrents/{identifier}/trackers", response_model=TorrentTrackersResponse)
+async def get_torrent_trackers(identifier: str):
+    client = TransmissionClient()
+    torrents = await client.get_torrents()
+    target = next((t for t in torrents if t.id == identifier or t.hash.lower() == identifier.lower()), None)
+    if not target:
+        raise HTTPException(status_code=404, detail=f"Torrent '{identifier}' not found in Transmission")
+    summary = summarize_torrent_trackers(getattr(target, "tracker_stats", []) or [])
+    return TorrentTrackersResponse(
+        torrent_id=target.id,
+        torrent_name=target.name,
+        is_private=getattr(target, "is_private", False),
+        total_trackers=summary["total_trackers"],
+        healthy_count=summary["healthy_count"],
+        blocked_count=summary["blocked_count"],
+        unreachable_count=summary["unreachable_count"],
+        vpn_blocked_suspect=summary["vpn_blocked_suspect"],
+        trackers=[
+            TrackerItemDiagnostic(**ts) for ts in summary["trackers"]
+        ]
+    )
 
 @app.post("/api/torrents/{identifier}/boost")
 async def boost_torrent(identifier: str):

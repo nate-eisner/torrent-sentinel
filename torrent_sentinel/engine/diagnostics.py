@@ -7,6 +7,84 @@ from torrent_sentinel.models import TorrentInfo, OllamaDiagnosis, TorrentJudgeme
 
 logger = logging.getLogger(__name__)
 
+def classify_tracker_stat(stat: dict) -> dict:
+    """Classifies a tracker stat entry into status categories and flags potential VPN blocks."""
+    host = stat.get("host", "")
+    announce = stat.get("announce", "")
+    last_res = stat.get("lastAnnounceResult", "") or ""
+    last_succ = bool(stat.get("lastAnnounceSucceeded", False))
+    timed_out = bool(stat.get("lastAnnounceTimedOut", False))
+    seeders = int(stat.get("seederCount", 0))
+    leechers = int(stat.get("leecherCount", 0))
+    peers = int(stat.get("lastAnnouncePeerCount", 0))
+    tier = int(stat.get("tier", 0))
+
+    res_lower = last_res.lower()
+
+    # Blocked / WAF / Cloudflare / Banned indicators
+    is_blocked = False
+    category = "waiting"
+
+    if last_succ or res_lower == "success":
+        category = "healthy"
+    elif any(kw in res_lower for kw in [
+        "403", "forbidden", "503", "cloudflare", "turnstile", "ddos-guard",
+        "blocked", "banned", "blacklisted", "unauthorized", "access denied", "ratio"
+    ]):
+        category = "blocked"
+        is_blocked = True
+    elif timed_out or any(kw in res_lower for kw in [
+        "timed out", "timeout", "could not connect", "connection refused",
+        "host not found", "getaddrinfo", "reset by peer", "no route", "unreachable", "refused"
+    ]):
+        category = "unreachable"
+    elif any(kw in res_lower for kw in ["not registered", "unregistered", "not exist", "unregistered torrent"]):
+        category = "unregistered"
+    elif last_res:
+        category = "error"
+
+    return {
+        "id": stat.get("id"),
+        "host": host,
+        "announce": announce,
+        "tier": tier,
+        "status": category,
+        "is_vpn_block_suspect": is_blocked,
+        "last_result": last_res,
+        "last_succeeded": last_succ,
+        "seeders": max(seeders, 0),
+        "leechers": max(leechers, 0),
+        "peers": max(peers, 0),
+    }
+
+def summarize_torrent_trackers(tracker_stats: list) -> dict:
+    """Summarizes tracker statistics for a torrent, highlighting potential VPN/IP blocks."""
+    if not tracker_stats:
+        return {
+            "total_trackers": 0,
+            "healthy_count": 0,
+            "blocked_count": 0,
+            "unreachable_count": 0,
+            "vpn_blocked_suspect": False,
+            "trackers": []
+        }
+    classified = [classify_tracker_stat(ts) for ts in tracker_stats]
+    total = len(classified)
+    healthy = sum(1 for c in classified if c["status"] == "healthy")
+    blocked = sum(1 for c in classified if c["status"] == "blocked")
+    unreachable = sum(1 for c in classified if c["status"] == "unreachable")
+    vpn_blocked_suspect = (blocked > 0) or (total > 0 and healthy == 0 and any(c["is_vpn_block_suspect"] for c in classified))
+
+    return {
+        "total_trackers": total,
+        "healthy_count": healthy,
+        "blocked_count": blocked,
+        "unreachable_count": unreachable,
+        "vpn_blocked_suspect": vpn_blocked_suspect,
+        "trackers": classified
+    }
+
+
 class Diagnostics:
     def __init__(self, transmission_client, ollama_client):
         self.transmission = transmission_client
@@ -165,6 +243,8 @@ class Diagnostics:
         boost_count = getattr(stalled_rec, "boost_count", 0) if stalled_rec else 0
         stalled_since = stalled_rec.first_stalled_at.isoformat() if stalled_rec and getattr(stalled_rec, "first_stalled_at", None) else None
 
+        tracker_summary = summarize_torrent_trackers(getattr(t, "tracker_stats", []))
+
         return {
             "id": t.id,
             "hash": t.hash,
@@ -188,6 +268,8 @@ class Diagnostics:
                 "total_trackers": total_trackers,
                 "working_trackers": working_count,
                 "failing_trackers": failing_count,
+                "blocked_trackers": tracker_summary["blocked_count"],
+                "vpn_blocked_suspect": tracker_summary["vpn_blocked_suspect"],
                 "max_reported_seeders": max_seeders,
                 "common_errors": list(unique_errors)
             },

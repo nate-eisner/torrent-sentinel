@@ -21,6 +21,7 @@ from torrent_sentinel.clients.servarr import ServarrClient
 from torrent_sentinel.services.tracker_service import TrackerService
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.notifications.dispatcher import NotificationDispatcher
+from torrent_sentinel.engine.diagnostics import summarize_torrent_trackers
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,9 @@ class TorrentBooster:
                 is_errored=client_is_errored,
                 is_private=getattr(t, "is_private", False),
                 is_off_vpn=is_off_vpn_target,
-                latest_judgement=judgement
+                latest_judgement=judgement,
+                tracker_stats=getattr(t, "tracker_stats", []) or [],
+                tracker_summary=summarize_torrent_trackers(getattr(t, "tracker_stats", []) or [])
             ))
 
 

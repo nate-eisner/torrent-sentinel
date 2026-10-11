@@ -263,3 +263,35 @@ class TransmissionClient:
             logger.error("Failed to add labels %s to torrent %s: %s", labels, torrent_id, e)
             return False
 
+    async def port_test(self) -> dict:
+        """Tests if Transmission's peer listening port is open/accessible from the outside."""
+        peer_port = None
+        try:
+            async with httpx.AsyncClient() as client:
+                sess_res = await self._post_rpc(client, {
+                    "method": "session-get",
+                    "arguments": {"fields": ["peer-port"]}
+                })
+                peer_port = sess_res.get("arguments", {}).get("peer-port")
+        except Exception as e:
+            logger.warning("Could not fetch peer-port from Transmission: %s", e)
+
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, {"method": "port-test"})
+                port_open = bool(res.get("arguments", {}).get("port-is-open", False))
+                return {
+                    "status": "success",
+                    "port_open": port_open,
+                    "port": peer_port,
+                    "message": f"Peer listening port {peer_port} is {'OPEN' if port_open else 'CLOSED / FIREWALLED'}"
+                }
+        except Exception as e:
+            logger.error("Port test failed: %s", e)
+            return {
+                "status": "error",
+                "port_open": False,
+                "port": peer_port,
+                "message": f"Port test failed: {e}"
+            }
+

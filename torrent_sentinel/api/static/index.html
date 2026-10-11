@@ -80,6 +80,12 @@
                         <span id="vpn-power-text">VPN: Active</span>
                     </button>
 
+                    <!-- Transmission Peer Listening Port Check -->
+                    <button id="port-test-btn" onclick="runPortTest()" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700 active:scale-95 shadow-sm" title="Click to test external peer listening port">
+                        <i data-lucide="network" class="w-4 h-4 text-slate-400" id="port-test-icon"></i>
+                        <span id="port-test-text">Port Check</span>
+                    </button>
+
                     <!-- VPN Rotation Toggle (Active / Paused) -->
                     <div class="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl" title="Pause or resume automated VPN rotation">
                         <div class="flex items-center gap-1.5">
@@ -634,6 +640,74 @@
         </div>
     </div>
 
+    <!-- Trackers & Diagnostics Modal -->
+    <div id="modal-trackers" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        <i data-lucide="radio" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Trackers & Swarm Health</h3>
+                        <p id="trackers-modal-torrent-name" class="text-[11px] text-slate-400 truncate max-w-md">Loading...</p>
+                    </div>
+                </div>
+                <button onclick="closeTrackersModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- VPN Warning Alert (Conditional) -->
+            <div id="trackers-modal-vpn-warning" class="hidden px-6 pt-4">
+                <div class="bg-rose-950/40 border border-rose-600/40 rounded-xl p-3.5 flex items-start gap-3 text-rose-200">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-rose-400 shrink-0 mt-0.5"></i>
+                    <div class="text-xs space-y-1">
+                        <div class="font-bold text-rose-300">Potential VPN IP Block Detected (<span id="trackers-blocked-count">0</span> Trackers)</div>
+                        <p class="text-rose-200/80 leading-relaxed">
+                            One or more trackers returned HTTP 403 Forbidden or anti-bot challenge to your VPN IP address. You can inject verified open UDP trackers or run this torrent in Solo Off-VPN mode.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-4 gap-2 px-6 py-3 border-b border-slate-800/80 text-center text-xs">
+                <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                    <div class="text-[10px] text-slate-500 uppercase font-semibold">Total</div>
+                    <div id="trackers-stat-total" class="font-bold text-white text-base">0</div>
+                </div>
+                <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                    <div class="text-[10px] text-emerald-400 uppercase font-semibold">Healthy</div>
+                    <div id="trackers-stat-healthy" class="font-bold text-emerald-400 text-base">0</div>
+                </div>
+                <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                    <div class="text-[10px] text-rose-400 uppercase font-semibold">Blocked (403)</div>
+                    <div id="trackers-stat-blocked" class="font-bold text-rose-400 text-base">0</div>
+                </div>
+                <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                    <div class="text-[10px] text-amber-400 uppercase font-semibold">Timeout</div>
+                    <div id="trackers-stat-unreachable" class="font-bold text-amber-400 text-base">0</div>
+                </div>
+            </div>
+
+            <!-- Tracker List Container -->
+            <div id="trackers-modal-list" class="p-4 overflow-y-auto flex-1 min-h-[180px] max-h-[350px]">
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-2.5">
+                <button onclick="injectTrackersFromModal()" title="Inject verified public UDP trackers from Sentinel pool" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-blue-600/20 active:scale-95">
+                    <i data-lucide="zap" class="w-4 h-4"></i> Inject UDP Trackers
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeTrackersModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // State variables
@@ -1115,6 +1189,15 @@
                     `;
                 }
 
+                let trackerWarningBadge = '';
+                if (t.tracker_summary && t.tracker_summary.vpn_blocked_suspect) {
+                    trackerWarningBadge = `
+                        <button onclick="openTrackersModal('${t.id}')" title="Potential VPN IP block! ${t.tracker_summary.blocked_count} tracker(s) returned HTTP 403 or Cloudflare challenge.\nClick to inspect and inject healthy trackers." class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/80 hover:bg-rose-900/60 animate-pulse transition-all cursor-pointer">
+                            <i data-lucide="shield-alert" class="w-2.5 h-2.5 text-rose-400"></i> Blocked Trackers (${t.tracker_summary.blocked_count})
+                        </button>
+                    `;
+                }
+
                 return `
                     <tr class="hover:bg-slate-800/30 transition-colors">
                         <td class="px-5 py-4">
@@ -1126,6 +1209,7 @@
                                 ${privateBadge}
                                 ${servarrBadge}
                                 ${offVpnBadge}
+                                ${trackerWarningBadge}
                             </div>
                         </td>
                         <td class="px-4 py-4 whitespace-nowrap">
@@ -1155,6 +1239,9 @@
                             <div class="flex items-center justify-center gap-1.5">
                                 <button onclick="openJudgeModal('${t.id}')" title="AI Judge - Diagnose download with LLM" class="p-1.5 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white transition-all border border-purple-500/20 active:scale-95">
                                     <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="openTrackersModal('${t.id}')" title="Trackers & Swarm Diagnostics" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-blue-600 hover:text-white transition-all border border-slate-700 active:scale-95">
+                                    <i data-lucide="radio" class="w-4 h-4"></i>
                                 </button>
                                 ${boostActionBtn}
                                 ${offVpnActionBtn}
@@ -1917,6 +2004,159 @@
             }
         }
 
+        // ==================== PORT TEST & TRACKER DIAGNOSTICS ====================
+        async function runPortTest() {
+            const btn = document.getElementById('port-test-btn');
+            const icon = document.getElementById('port-test-icon');
+            const text = document.getElementById('port-test-text');
+            if (!btn || !text) return;
+            
+            text.innerText = 'Testing...';
+            btn.classList.add('opacity-75');
+            
+            try {
+                const res = await fetch('/api/network/port-test');
+                const data = await res.json();
+                const port = data.port || 51413;
+                if (data.port_open) {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/60 active:scale-95 shadow-sm';
+                    text.innerText = `Port: ${port} Open`;
+                    btn.title = `Inbound port ${port} is OPEN. Remote peers can establish connections to your client through the VPN tunnel. Click to re-test.`;
+                    if (icon) {
+                        icon.className = 'w-4 h-4 text-emerald-400';
+                        icon.setAttribute('data-lucide', 'check-circle');
+                    }
+                    showToast(`✓ Inbound listening port ${port} is OPEN!`);
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border bg-amber-950/40 text-amber-300 border-amber-800/60 hover:bg-amber-900/60 active:scale-95 shadow-sm';
+                    text.innerText = `Port: ${port} Closed`;
+                    btn.title = `Inbound port ${port} is CLOSED / FIREWALLED. Remote peers cannot connect to you. Swarms with non-forwarded seeders will stall on VPN. Click to re-test.`;
+                    if (icon) {
+                        icon.className = 'w-4 h-4 text-amber-400';
+                        icon.setAttribute('data-lucide', 'alert-triangle');
+                    }
+                    showToast(`⚠️ Inbound listening port ${port} is CLOSED / FIREWALLED.`, true);
+                }
+                lucide.createIcons();
+            } catch (err) {
+                text.innerText = 'Port: Error';
+                btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border bg-rose-950/40 text-rose-300 border-rose-800/60';
+                showToast('Port test failed: ' + err.message, true);
+            } finally {
+                btn.classList.remove('opacity-75');
+            }
+        }
+
+        let currentTrackersTorrentId = null;
+
+        async function openTrackersModal(torrentId) {
+            currentTrackersTorrentId = torrentId;
+            const modal = document.getElementById('modal-trackers');
+            if (!modal) return;
+            
+            document.getElementById('trackers-modal-torrent-name').innerText = 'Loading torrent trackers...';
+            document.getElementById('trackers-modal-list').innerHTML = `
+                <div class="py-8 text-center text-slate-500 flex flex-col items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-6 h-6 animate-spin text-blue-400"></i>
+                    <span>Fetching tracker status from Transmission...</span>
+                </div>
+            `;
+            lucide.createIcons();
+
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+            try {
+                const res = await fetch(`/api/torrents/${encodeURIComponent(torrentId)}/trackers`);
+                if (!res.ok) throw new Error('Failed to load trackers');
+                const data = await res.json();
+                
+                document.getElementById('trackers-modal-torrent-name').innerText = data.torrent_name;
+                
+                const bannerEl = document.getElementById('trackers-modal-vpn-warning');
+                if (data.vpn_blocked_suspect) {
+                    bannerEl.classList.remove('hidden');
+                    document.getElementById('trackers-blocked-count').innerText = data.blocked_count;
+                } else {
+                    bannerEl.classList.add('hidden');
+                }
+
+                document.getElementById('trackers-stat-total').innerText = data.total_trackers;
+                document.getElementById('trackers-stat-healthy').innerText = data.healthy_count;
+                document.getElementById('trackers-stat-blocked').innerText = data.blocked_count;
+                document.getElementById('trackers-stat-unreachable').innerText = data.unreachable_count;
+
+                if (!data.trackers || data.trackers.length === 0) {
+                    document.getElementById('trackers-modal-list').innerHTML = `
+                        <div class="py-8 text-center text-slate-500">No trackers found on this torrent.</div>
+                    `;
+                    return;
+                }
+
+                document.getElementById('trackers-modal-list').innerHTML = `
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-950/80 text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="px-3 py-2">Tracker Host</th>
+                                <th class="px-3 py-2">Status</th>
+                                <th class="px-3 py-2 text-right">Seeds</th>
+                                <th class="px-3 py-2 text-right">Peers</th>
+                                <th class="px-3 py-2">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 font-mono">
+                            ${data.trackers.map(tr => {
+                                let badge = '';
+                                if (tr.status === 'healthy') {
+                                    badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/60">HEALTHY</span>';
+                                } else if (tr.status === 'blocked') {
+                                    badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-800/60 animate-pulse" title="HTTP 403 / Cloudflare / Banned">BLOCKED (403)</span>';
+                                } else if (tr.status === 'unreachable') {
+                                    badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800/60">TIMEOUT</span>';
+                                } else {
+                                    badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">${tr.status.toUpperCase()}</span>`;
+                                }
+
+                                return `
+                                    <tr class="hover:bg-slate-800/30">
+                                        <td class="px-3 py-2 text-slate-200 truncate max-w-xs" title="${tr.announce}">${tr.host || tr.announce}</td>
+                                        <td class="px-3 py-2 whitespace-nowrap">${badge}</td>
+                                        <td class="px-3 py-2 text-right text-emerald-400">${tr.seeders}</td>
+                                        <td class="px-3 py-2 text-right text-slate-400">${tr.peers}</td>
+                                        <td class="px-3 py-2 text-[11px] text-slate-500 truncate max-w-xs" title="${tr.last_result || ''}">${tr.last_result || '--'}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+                lucide.createIcons();
+            } catch (err) {
+                document.getElementById('trackers-modal-list').innerHTML = `
+                    <div class="py-6 text-center text-rose-400">Error loading trackers: ${err.message}</div>
+                `;
+            }
+        }
+
+        function closeTrackersModal() {
+            const modal = document.getElementById('modal-trackers');
+            if (!modal) return;
+            modal.classList.add('opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                currentTrackersTorrentId = null;
+            }, 200);
+        }
+
+        async function injectTrackersFromModal() {
+            if (!currentTrackersTorrentId) return;
+            showToast('⚡ Injecting verified public UDP trackers...');
+            await boostTorrent(currentTrackersTorrentId);
+            setTimeout(() => {
+                openTrackersModal(currentTrackersTorrentId);
+            }, 1000);
+        }
+
         // Rotate VPN button
         document.getElementById('rotate-btn').addEventListener('click', async () => {
             const btn = document.getElementById('rotate-btn');
@@ -2012,6 +2252,10 @@
                 const offModal = document.getElementById('modal-off-vpn-confirm');
                 if (offModal && !offModal.classList.contains('hidden')) {
                     closeOffVpnModal();
+                }
+                const trModal = document.getElementById('modal-trackers');
+                if (trModal && !trModal.classList.contains('hidden')) {
+                    closeTrackersModal();
                 }
             }
         });

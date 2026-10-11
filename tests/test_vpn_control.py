@@ -9,6 +9,7 @@ from torrent_sentinel.config import settings
 from torrent_sentinel.models import LocationProfile, TorrentInfo, OffVpnState, UnifiedTorrentItem, BoostState
 from torrent_sentinel.vpn.mock import MockVPNAdapter
 from torrent_sentinel.vpn.unraid_wireguard import UnraidWireGuardAdapter
+from torrent_sentinel.clients.transmission import TransmissionClient
 from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.daemon import SentinelDaemon
 from torrent_sentinel.api.router import app
@@ -24,6 +25,22 @@ def make_profile(pid: str = "us-nyc", name: str = "US New York") -> LocationProf
         country="US",
         endpoint="1.2.3.4:51820",
         config_file=f"/fake/{pid}.conf"
+    )
+
+
+def make_torrent(tid: str, thash: str, name: str, progress: float = 0.5) -> TorrentInfo:
+    return TorrentInfo(
+        id=tid,
+        hash=thash,
+        name=name,
+        status="downloading",
+        progress=progress,
+        rate_download=1024.0,
+        rate_upload=0.0,
+        peers_connected=5,
+        peers_sending_to_us=2,
+        num_seeds=2,
+        num_leechs=3
     )
 
 
@@ -481,3 +498,151 @@ def test_cli_off_vpn_start_and_stop():
         mock_set_vpn.assert_called_with(True)
         mock_resume_fleet.assert_called_with(["20"])
         mock_clear_state.assert_called_with(None)
+
+
+# ---------------------------------------------------------------------------
+# 6. Port Test & Tracker Diagnostics Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_transmission_port_test():
+    client = TransmissionClient()
+    with patch.object(client, "_post_rpc", AsyncMock(side_effect=[
+        {"result": "success", "arguments": {"peer-port": 51413}},
+        {"result": "success", "arguments": {"port-is-open": True}}
+    ])):
+        res = await client.port_test()
+        assert res["status"] == "success"
+        assert res["port_open"] is True
+        assert res["port"] == 51413
+
+
+def test_tracker_classification_and_summarization():
+    from torrent_sentinel.engine.diagnostics import classify_tracker_stat, summarize_torrent_trackers
+
+    # 1. Healthy tracker
+    stat_healthy = {
+        "host": "tracker.opentrackr.org",
+        "announce": "udp://tracker.opentrackr.org:1337/announce",
+        "lastAnnounceResult": "Success",
+        "lastAnnounceSucceeded": True,
+        "seederCount": 50,
+        "leecherCount": 10
+    }
+    c_healthy = classify_tracker_stat(stat_healthy)
+    assert c_healthy["status"] == "healthy"
+    assert c_healthy["is_vpn_block_suspect"] is False
+
+    # 2. Blocked / 403 tracker
+    stat_blocked = {
+        "host": "tracker.private.org",
+        "announce": "https://tracker.private.org/announce",
+        "lastAnnounceResult": "HTTP 403 Forbidden - Cloudflare Turnstile verification required",
+        "lastAnnounceSucceeded": False,
+        "seederCount": 0,
+        "leecherCount": 0
+    }
+    c_blocked = classify_tracker_stat(stat_blocked)
+    assert c_blocked["status"] == "blocked"
+    assert c_blocked["is_vpn_block_suspect"] is True
+
+    # 3. Timed out tracker
+    stat_timeout = {
+        "host": "tracker.dead.org",
+        "announce": "udp://tracker.dead.org:6969/announce",
+        "lastAnnounceResult": "Connection timed out",
+        "lastAnnounceSucceeded": False,
+        "lastAnnounceTimedOut": True,
+        "seederCount": 0,
+        "leecherCount": 0
+    }
+    c_timeout = classify_tracker_stat(stat_timeout)
+    assert c_timeout["status"] == "unreachable"
+
+    # Summarize
+    summary = summarize_torrent_trackers([stat_healthy, stat_blocked, stat_timeout])
+    assert summary["total_trackers"] == 3
+    assert summary["healthy_count"] == 1
+    assert summary["blocked_count"] == 1
+    assert summary["unreachable_count"] == 1
+    assert summary["vpn_blocked_suspect"] is True
+
+
+def test_api_network_port_test_endpoint(client):
+    with patch("torrent_sentinel.clients.transmission.TransmissionClient.port_test", AsyncMock(return_value={
+        "status": "success",
+        "port_open": False,
+        "port": 51413,
+        "message": "Peer listening port 51413 is CLOSED / FIREWALLED"
+    })):
+        resp = client.get("/api/network/port-test")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["port_open"] is False
+        assert data["port"] == 51413
+        assert "CLOSED" in data["message"]
+
+
+def test_api_torrents_trackers_endpoint(client):
+    torrent = make_torrent("42", "424242", "Stuck Torrent", progress=0.1)
+    torrent.tracker_stats = [
+        {
+            "host": "tracker.blocked.com",
+            "announce": "https://tracker.blocked.com/announce",
+            "lastAnnounceResult": "HTTP 403 Forbidden",
+            "lastAnnounceSucceeded": False,
+            "seederCount": 0,
+            "leecherCount": 0,
+            "lastAnnouncePeerCount": 0
+        }
+    ]
+    with patch("torrent_sentinel.clients.transmission.TransmissionClient.get_torrents", AsyncMock(return_value=[torrent])):
+        resp = client.get("/api/torrents/42/trackers")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["torrent_id"] == "42"
+        assert data["total_trackers"] == 1
+        assert data["blocked_count"] == 1
+        assert data["vpn_blocked_suspect"] is True
+        assert data["trackers"][0]["status"] == "blocked"
+
+
+def test_cli_test_port_command():
+    mock_adapter = AsyncMock()
+    mock_adapter.is_connected = AsyncMock(return_value=True)
+    mock_adapter.get_current_profile = AsyncMock(return_value=make_profile("loc-1", "Netherlands WireGuard"))
+
+    with patch("torrent_sentinel.cli.get_vpn_adapter", return_value=mock_adapter), \
+         patch("torrent_sentinel.clients.transmission.TransmissionClient.port_test", AsyncMock(return_value={
+             "status": "success",
+             "port_open": True,
+             "port": 51413,
+             "message": "Port 51413 is OPEN"
+         })):
+        result = runner.invoke(cli_app, ["test-port"])
+        assert result.exit_code == 0
+        assert "OPEN" in result.output
+        assert "51413" in result.output
+        assert "Netherlands WireGuard" in result.output
+
+
+def test_cli_trackers_command():
+    torrent = make_torrent("10", "abc12345", "My Test Torrent", progress=0.2)
+    torrent.tracker_stats = [
+        {
+            "host": "tracker.test.org",
+            "announce": "https://tracker.test.org/announce",
+            "lastAnnounceResult": "HTTP 403 Forbidden",
+            "lastAnnounceSucceeded": False,
+            "seederCount": 0,
+            "leecherCount": 0,
+            "lastAnnouncePeerCount": 0
+        }
+    ]
+    with patch("torrent_sentinel.clients.transmission.TransmissionClient.get_torrents", AsyncMock(return_value=[torrent])):
+        result = runner.invoke(cli_app, ["trackers", "10"])
+        assert result.exit_code == 0
+        assert "My Test Torrent" in result.output
+        assert "BLOCKED" in result.output
+        assert "VPN IP Block Detected" in result.output

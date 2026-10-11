@@ -26,6 +26,7 @@ class TorrentStatus(BaseModel):
     is_private: bool = False
     is_off_vpn: bool = False
     latest_judgement: Optional[Dict[str, Any]] = None
+    tracker_summary: Optional[Dict[str, Any]] = None
 
 class BoostEventSummary(BaseModel):
     id: str
@@ -79,6 +80,38 @@ class SystemStatus(BaseModel):
     ollama_model: Optional[str] = None
     autopilot_mode: str = "off"
     web_uis: List[WebUILink] = Field(default_factory=list)
+    peer_port: Optional[int] = None
+    peer_port_open: Optional[bool] = None
+
+class PortTestResponse(BaseModel):
+    status: str = "success"
+    port_open: bool
+    port: Optional[int] = None
+    message: str
+
+class TrackerItemDiagnostic(BaseModel):
+    id: Optional[int] = None
+    host: str
+    announce: str
+    tier: int = 0
+    status: str  # healthy, blocked, unreachable, unregistered, waiting, error
+    is_vpn_block_suspect: bool = False
+    last_result: Optional[str] = None
+    last_succeeded: bool = False
+    seeders: int = 0
+    leechers: int = 0
+    peers: int = 0
+
+class TorrentTrackersResponse(BaseModel):
+    torrent_id: str
+    torrent_name: str
+    is_private: bool = False
+    total_trackers: int = 0
+    healthy_count: int = 0
+    blocked_count: int = 0
+    unreachable_count: int = 0
+    vpn_blocked_suspect: bool = False
+    trackers: List[TrackerItemDiagnostic] = Field(default_factory=list)
 
 class VpnToggleRequest(BaseModel):
     enabled: Optional[bool] = None

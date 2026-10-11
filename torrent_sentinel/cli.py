@@ -681,7 +681,116 @@ def off_vpn_status_cmd():
 
     asyncio.run(_status())
 
+@vpn_app.command("port-check")
+def vpn_port_check_cmd():
+    """Test if Transmission's peer-listening port is open/forwarded on the current connection."""
+    test_port_cmd()
+
+@app.command("test-port")
+def test_port_cmd():
+    """Test Transmission's incoming peer listening port (verifies if VPN/NAT is firewalled)."""
+    setup_logging()
+    from torrent_sentinel.clients.transmission import TransmissionClient
+
+    async def _test():
+        client = TransmissionClient()
+        adapter = get_vpn_adapter()
+        connected = await adapter.is_connected()
+        prof = await adapter.get_current_profile()
+        loc = prof.name if prof else "Direct / None"
+
+        console.print("[cyan]Testing Transmission peer listening port externally...[/cyan]")
+        res = await client.port_test()
+        port = res.get("port")
+        is_open = res.get("port_open", False)
+
+        port_color = "green" if is_open else "red"
+        status_text = "OPEN (Accepting Inbound Connections)" if is_open else "CLOSED / FIREWALLED"
+        vpn_status = f"[green]Active ({loc})[/green]" if connected else "[yellow]Disconnected / Direct[/yellow]"
+
+        table = Table(title="Transmission Network Port Test")
+        table.add_column("Parameter", style="cyan", no_wrap=True)
+        table.add_column("Value", style="bold")
+        table.add_row("Peer Listening Port", str(port or "Unknown"))
+        table.add_row("Port Status", f"[{port_color}]{status_text}[/{port_color}]")
+        table.add_row("VPN Connection", vpn_status)
+
+        console.print(table)
+
+        if not is_open:
+            console.print(Panel(
+                "[bold yellow]⚠️ Inbound Port is Closed / Firewalled[/bold yellow]\n\n"
+                "• Your client cannot receive incoming connections from other firewalled peers.\n"
+                "• If a torrent swarm consists of peers behind NAT/firewalls, you [bold red]cannot connect to them[/bold red].\n"
+                "• [bold green]Recommended fix:[/bold green] Use a VPN provider with WireGuard Port Forwarding support (AirVPN, ProtonVPN, TorGuard) or a self-hosted VPS.",
+                title="Troubleshooting Port Forwarding",
+                expand=False
+            ))
+        else:
+            console.print("[bold green]✓ Port is open! Inbound peer connections will connect properly.[/bold green]")
+
+    asyncio.run(_test())
+
+@app.command("trackers")
+def trackers_cmd(
+    identifier: str = typer.Argument(..., help="Torrent ID or Hash to inspect trackers for")
+):
+    """Inspect tracker responses, errors, and detect VPN IP blocks for a torrent."""
+    setup_logging()
+    from torrent_sentinel.clients.transmission import TransmissionClient
+    from torrent_sentinel.engine.diagnostics import summarize_torrent_trackers
+
+    async def _trackers():
+        client = TransmissionClient()
+        torrents = await client.get_torrents()
+        target = next((t for t in torrents if t.id == identifier or t.hash.lower() == identifier.lower()), None)
+        if not target:
+            console.print(f"[bold red]Torrent '{identifier}' not found in Transmission.[/bold red]")
+            return
+
+        summary = summarize_torrent_trackers(getattr(target, "tracker_stats", []) or [])
+        
+        table = Table(title=f"Trackers for '{target.name}'")
+        table.add_column("Host", style="cyan")
+        table.add_column("Status", style="bold")
+        table.add_column("Seeds", justify="right")
+        table.add_column("Peers", justify="right")
+        table.add_column("Last Result", style="dim")
+
+        for tr in summary["trackers"]:
+            status = tr["status"]
+            if status == "healthy":
+                s_style = "[green]HEALTHY[/green]"
+            elif status == "blocked":
+                s_style = "[bold red]BLOCKED (VPN/WAF)[/bold red]"
+            elif status == "unreachable":
+                s_style = "[yellow]UNREACHABLE[/yellow]"
+            else:
+                s_style = f"[white]{status.upper()}[/white]"
+
+            table.add_row(
+                tr["host"],
+                s_style,
+                str(tr["seeders"]),
+                str(tr["peers"]),
+                tr["last_result"] or "None"
+            )
+
+        console.print(table)
+        
+        if summary["vpn_blocked_suspect"]:
+            console.print(Panel(
+                f"[bold red]⚠️ Potential VPN IP Block Detected![/bold red]\n\n"
+                f"{summary['blocked_count']} tracker(s) returned HTTP 403, Cloudflare challenges, or access denied.\n"
+                f"Run 'torrent-sentinel off-vpn start {target.id}' to test downloading off-VPN or inject public UDP trackers.",
+                title="VPN Block Warning",
+                expand=False
+            ))
+
+    asyncio.run(_trackers())
+
 if __name__ == "__main__":
     app()
+
 
 

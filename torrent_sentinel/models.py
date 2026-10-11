@@ -150,6 +150,8 @@ class UnifiedTorrentItem(BaseModel):
     is_private: bool = False
     is_off_vpn: bool = False
     latest_judgement: Optional[TorrentJudgement] = None
+    tracker_stats: List[Dict[str, Any]] = Field(default_factory=list)
+    tracker_summary: Optional[Dict[str, Any]] = None
 
 class OffVpnState(BaseModel):
     is_active: bool = False
