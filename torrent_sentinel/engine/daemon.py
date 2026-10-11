@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -16,7 +16,7 @@ from torrent_sentinel.engine.storage import Storage
 from torrent_sentinel.engine.decision import DecisionEngine
 from torrent_sentinel.engine.autopilot import AutopilotEngine
 from torrent_sentinel.vpn.base import BaseVPNAdapter
-from torrent_sentinel.models import AutopilotMode, OffVpnState
+from torrent_sentinel.models import AutopilotMode, OffVpnState, TorrentInfo
 
 logger = logging.getLogger(__name__)
 
