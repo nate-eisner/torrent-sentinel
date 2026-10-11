@@ -149,6 +149,12 @@ class TorrentBooster:
         except Exception as e:
             logger.debug("Could not fetch latest judgements: %s", e)
 
+        off_vpn_state = None
+        try:
+            off_vpn_state = await self.storage.get_off_vpn_state()
+        except Exception as e:
+            logger.debug("Could not fetch off_vpn_state: %s", e)
+
         unified_list: List[UnifiedTorrentItem] = []
 
         for t in torrents:
@@ -169,12 +175,30 @@ class TorrentBooster:
             client_is_errored = (t.error is not None and t.error != 0 and str(t.error) != "0") or bool(t.error_string)
             is_complete = t.progress >= 1.0 or t.status.lower() in ("seed", "seeding", "uploading")
 
+            is_off_vpn_target = bool(
+                off_vpn_state and off_vpn_state.is_active and (
+                    t.id == off_vpn_state.torrent_id or
+                    (off_vpn_state.torrent_hash and t.hash.lower() == off_vpn_state.torrent_hash.lower())
+                )
+            )
+            is_off_vpn_paused = bool(
+                off_vpn_state and off_vpn_state.is_active and not is_off_vpn_target and (
+                    t.id in off_vpn_state.paused_torrent_ids
+                )
+            )
+
             if client_is_errored:
                 state = BoostState.ERROR
                 status_msg = f"Client Error: {t.error_string or t.error}"
             elif is_complete:
                 state = BoostState.COMPLETED
                 status_msg = "Download 100% complete"
+            elif is_off_vpn_target:
+                state = BoostState.HEALTHY
+                status_msg = "Running Solo Off-VPN (Direct Connection)"
+            elif is_off_vpn_paused:
+                state = BoostState.HEALTHY
+                status_msg = "Paused (Solo Off-VPN active)"
             elif rec:
                 state = rec.state
                 status_msg = rec.status_message
@@ -211,6 +235,7 @@ class TorrentBooster:
                 servarr_queue_id=servarr_queue_id,
                 is_errored=client_is_errored,
                 is_private=getattr(t, "is_private", False),
+                is_off_vpn=is_off_vpn_target,
                 latest_judgement=judgement
             ))
 

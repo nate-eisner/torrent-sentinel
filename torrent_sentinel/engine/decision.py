@@ -68,6 +68,16 @@ class DecisionEngine:
         current_torrents: List[TorrentInfo],
         stalled_records: Optional[dict] = None
     ) -> Optional[LocationProfile]:
+        # Check if VPN is disabled or Solo Off-VPN is active
+        if not await self.storage.get_vpn_enabled():
+            logger.debug("DecisionEngine: VPN is disabled. Suppressing VPN rotation.")
+            return None
+
+        off_vpn_state = await self.storage.get_off_vpn_state()
+        if off_vpn_state and off_vpn_state.is_active:
+            logger.debug("DecisionEngine: Solo Off-VPN mode active. Suppressing VPN rotation.")
+            return None
+
         logger.debug("DecisionEngine: Checking if rotation is needed for %d torrent(s)...", len(current_torrents))
         diagnosis = await self.diagnostics.analyze_torrents(current_torrents, stalled_records=stalled_records)
 

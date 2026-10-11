@@ -32,13 +32,18 @@ from torrent_sentinel.api.schemas import (
     AutopilotTriggerRequest,
     AutopilotStatusResponse,
     ModelSelectRequest,
-    AvailableModelsResponse
+    AvailableModelsResponse,
+    VpnToggleRequest,
+    OffVpnStartRequest,
+    OffVpnStatusResponse,
+    VpnStatusResponse
 )
 from torrent_sentinel.models import (
     TorrentJudgement,
     SwarmAssessment,
     RecommendedAction,
-    AutopilotMode
+    AutopilotMode,
+    OffVpnState
 )
 
 
@@ -168,12 +173,56 @@ async def get_status():
     cached_trackers = 0
     healthy_trackers = 0
 
+    vpn_enabled = True
+    vpn_connected = False
+    off_vpn_mode = False
+    off_vpn_torrent_id = None
+    off_vpn_torrent_name = None
+    off_vpn_paused_count = 0
+
     try:
         if daemon_instance:
-            if daemon_instance.vpn_adapter:
-                profile = await daemon_instance.vpn_adapter.get_current_profile()
-                if profile:
-                    current_loc = profile.name
+            if hasattr(daemon_instance, "is_vpn_enabled"):
+                try:
+                    res = daemon_instance.is_vpn_enabled()
+                    if inspect.isawaitable(res):
+                        vpn_enabled = await res
+                    elif isinstance(res, bool):
+                        vpn_enabled = res
+                except Exception:
+                    pass
+
+            if hasattr(daemon_instance, "vpn_adapter") and daemon_instance.vpn_adapter:
+                if hasattr(daemon_instance.vpn_adapter, "is_connected"):
+                    try:
+                        res = daemon_instance.vpn_adapter.is_connected()
+                        if inspect.isawaitable(res):
+                            vpn_connected = await res
+                        elif isinstance(res, bool):
+                            vpn_connected = res
+                    except Exception:
+                        pass
+                if hasattr(daemon_instance.vpn_adapter, "get_current_profile"):
+                    try:
+                        res = daemon_instance.vpn_adapter.get_current_profile()
+                        profile = await res if inspect.isawaitable(res) else res
+                        if profile and hasattr(profile, "name") and isinstance(profile.name, str):
+                            current_loc = profile.name
+                    except Exception:
+                        pass
+
+            if hasattr(daemon_instance, "get_off_vpn_state"):
+                try:
+                    res = daemon_instance.get_off_vpn_state()
+                    off_state = await res if inspect.isawaitable(res) else res
+                    if isinstance(off_state, OffVpnState) and off_state.is_active:
+                        off_vpn_mode = True
+                        off_vpn_torrent_id = off_state.torrent_id
+                        off_vpn_torrent_name = off_state.torrent_name
+                        off_vpn_paused_count = len(off_state.paused_torrent_ids)
+                except Exception:
+                    pass
+
             if hasattr(daemon_instance, "booster") and daemon_instance.booster:
                 if hasattr(daemon_instance.booster, "is_auto_failover_enabled"):
                     try:
@@ -215,6 +264,13 @@ async def get_status():
                     except Exception:
                         pass
         else:
+            vpn_enabled = await storage.get_vpn_enabled()
+            off_state = await storage.get_off_vpn_state()
+            if isinstance(off_state, OffVpnState) and off_state.is_active:
+                off_vpn_mode = True
+                off_vpn_torrent_id = off_state.torrent_id
+                off_vpn_torrent_name = off_state.torrent_name
+                off_vpn_paused_count = len(off_state.paused_torrent_ids)
             val = await storage.get_setting("auto_vpn_rotation_enabled")
             if val is not None:
                 auto_vpn_rotation = (val.lower() == "true")
@@ -223,6 +279,13 @@ async def get_status():
                 llm_assisted = (val_llm.lower() in ("true", "1", "yes"))
     except Exception as e:
         logger.debug("API get_status: Error reading daemon state: %s", e)
+
+    if off_vpn_mode:
+        current_loc = f"Solo Off-VPN ({off_vpn_torrent_name or off_vpn_torrent_id})"
+    elif not vpn_enabled:
+        current_loc = "Direct / VPN Disabled"
+    elif not vpn_connected and (current_loc == "Unknown" or not current_loc):
+        current_loc = "Direct / Disconnected"
 
     try:
         history = await storage.get_history()
@@ -260,6 +323,12 @@ async def get_status():
         llm_assisted_failover_enabled=llm_assisted,
         auto_vpn_rotation_enabled=auto_vpn_rotation,
         vpn_rotation_paused=not auto_vpn_rotation,
+        vpn_enabled=vpn_enabled,
+        vpn_connected=vpn_connected,
+        off_vpn_mode=off_vpn_mode,
+        off_vpn_torrent_id=off_vpn_torrent_id,
+        off_vpn_torrent_name=off_vpn_torrent_name,
+        off_vpn_paused_count=off_vpn_paused_count,
         cached_trackers_count=cached_trackers,
         healthy_trackers_count=healthy_trackers,
         ollama_enabled=settings.OLLAMA_ENABLED,
@@ -296,6 +365,7 @@ async def get_torrents():
                     boosted_at=u.boosted_at,
                     grace_period_expires_at=u.grace_period_expires_at,
                     is_private=u.is_private,
+                    is_off_vpn=getattr(u, "is_off_vpn", False),
                     latest_judgement=u.latest_judgement.model_dump() if u.latest_judgement else None
                 ) for u in unified
             ]
@@ -303,6 +373,7 @@ async def get_torrents():
 
         client = TransmissionClient()
         torrents = await client.get_torrents()
+        off_state = await storage.get_off_vpn_state()
         return [
             TorrentStatus(
                 id=t.id,
@@ -317,7 +388,8 @@ async def get_torrents():
                 num_seeds=t.peers_sending_to_us,
                 num_leechs=max(t.peers_connected - t.peers_sending_to_us, 0),
                 error=(t.error_string or f"Error {t.error}") if (t.error is not None and t.error != 0 and str(t.error) != "0") else None,
-                is_private=getattr(t, "is_private", False)
+                is_private=getattr(t, "is_private", False),
+                is_off_vpn=bool(off_state and off_state.is_active and (t.id == off_state.torrent_id or (off_state.torrent_hash and t.hash.lower() == off_state.torrent_hash.lower())))
             ) for t in torrents
         ]
     except Exception as e:
@@ -627,6 +699,118 @@ async def pause_vpn_rotation():
 @app.post("/api/vpn/resume")
 async def resume_vpn_rotation():
     return await toggle_vpn_rotation(VpnRotationToggleRequest(paused=False))
+
+@app.get("/api/vpn/status", response_model=VpnStatusResponse)
+async def get_vpn_status_endpoint():
+    vpn_enabled = True
+    connected = False
+    current_location = None
+    off_vpn_mode = False
+    off_vpn_name = None
+
+    if daemon_instance:
+        vpn_enabled = await daemon_instance.is_vpn_enabled()
+        if daemon_instance.vpn_adapter:
+            connected = await daemon_instance.vpn_adapter.is_connected()
+            prof = await daemon_instance.vpn_adapter.get_current_profile()
+            if prof:
+                current_location = prof.name
+        off_state = await daemon_instance.get_off_vpn_state()
+        if off_state and off_state.is_active:
+            off_vpn_mode = True
+            off_vpn_name = off_state.torrent_name
+    else:
+        vpn_enabled = await storage.get_vpn_enabled()
+        off_state = await storage.get_off_vpn_state()
+        if off_state and off_state.is_active:
+            off_vpn_mode = True
+            off_vpn_name = off_state.torrent_name
+
+    return VpnStatusResponse(
+        status="success",
+        vpn_enabled=vpn_enabled,
+        connected=connected,
+        current_location=current_location,
+        off_vpn_mode=off_vpn_mode,
+        off_vpn_torrent_name=off_vpn_name
+    )
+
+@app.post("/api/vpn/disable")
+async def disable_vpn_endpoint():
+    if not daemon_instance:
+        await storage.set_vpn_enabled(False)
+        return {"status": "success", "message": "VPN disabled in storage", "vpn_enabled": False, "connected": False}
+    return await daemon_instance.disable_vpn()
+
+@app.post("/api/vpn/enable")
+async def enable_vpn_endpoint(req: Optional[VpnToggleRequest] = None):
+    location = req.location if req else None
+    if not daemon_instance:
+        await storage.set_vpn_enabled(True)
+        return {"status": "success", "message": "VPN enabled in storage", "vpn_enabled": True, "connected": False}
+    return await daemon_instance.enable_vpn(preferred_location=location)
+
+@app.post("/api/vpn/toggle")
+async def toggle_vpn_endpoint(req: Optional[VpnToggleRequest] = None):
+    if not daemon_instance:
+        current = await storage.get_vpn_enabled()
+        target = req.enabled if (req and req.enabled is not None) else not current
+        await storage.set_vpn_enabled(target)
+        return {"status": "success", "vpn_enabled": target, "connected": False}
+    
+    current = await daemon_instance.is_vpn_enabled()
+    target = req.enabled if (req and req.enabled is not None) else not current
+    if target:
+        loc = req.location if req else None
+        return await daemon_instance.enable_vpn(preferred_location=loc)
+    else:
+        return await daemon_instance.disable_vpn()
+
+@app.post("/api/torrents/{identifier}/run-off-vpn")
+async def run_torrent_off_vpn_endpoint(identifier: str, req: Optional[OffVpnStartRequest] = None):
+    if not daemon_instance:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    auto_restore = req.auto_restore if req else True
+    res = await daemon_instance.start_solo_off_vpn(identifier, auto_restore=auto_restore)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=404, detail=res.get("message", "Error starting solo off-vpn"))
+    return res
+
+@app.post("/api/torrents/off-vpn/restore")
+async def restore_solo_off_vpn_endpoint():
+    if not daemon_instance:
+        await storage.set_off_vpn_state(None)
+        await storage.set_vpn_enabled(True)
+        return {"status": "success", "message": "Solo off-vpn state cleared"}
+    return await daemon_instance.restore_from_solo_off_vpn()
+
+@app.post("/api/torrents/off-vpn/stop")
+async def stop_solo_off_vpn_endpoint():
+    return await restore_solo_off_vpn_endpoint()
+
+@app.get("/api/torrents/off-vpn/status", response_model=OffVpnStatusResponse)
+async def get_solo_off_vpn_status_endpoint():
+    state = None
+    if daemon_instance:
+        state = await daemon_instance.get_off_vpn_state()
+    else:
+        state = await storage.get_off_vpn_state()
+
+    if not state:
+        return OffVpnStatusResponse(is_active=False)
+
+    return OffVpnStatusResponse(
+        is_active=state.is_active,
+        torrent_id=state.torrent_id,
+        torrent_hash=state.torrent_hash,
+        torrent_name=state.torrent_name,
+        paused_count=len(state.paused_torrent_ids),
+        paused_torrent_ids=state.paused_torrent_ids,
+        previous_vpn_location=state.previous_vpn_location,
+        started_at=state.started_at,
+        auto_restore_on_complete=state.auto_restore_on_complete
+    )
+
 
 
 @app.get("/api/boost-history", response_model=List[BoostEventSummary])

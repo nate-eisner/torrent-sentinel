@@ -173,18 +173,45 @@ class TransmissionClient:
             return False
 
     async def resume(self, torrent_id: str) -> bool:
-        """Resume / start a torrent."""
-        logger.info("Requesting start/resume for torrent %s", torrent_id)
+        """Resume / start a single torrent."""
+        return await self.resume_torrents([torrent_id])
+
+    async def resume_torrents(self, torrent_ids: List[str]) -> bool:
+        """Resume / start multiple torrents."""
+        if not torrent_ids:
+            return True
+        logger.info("Requesting start/resume for %d torrent(s): %s", len(torrent_ids), torrent_ids)
         payload = {
             "method": "torrent-start",
-            "arguments": {"ids": [self._normalize_id(torrent_id)]}
+            "arguments": {"ids": [self._normalize_id(i) for i in torrent_ids]}
         }
         try:
             async with httpx.AsyncClient() as client:
                 res = await self._post_rpc(client, payload)
                 return res.get("result") == "success"
         except Exception as e:
-            logger.error("Failed to resume torrent %s: %s", torrent_id, e)
+            logger.error("Failed to resume torrents %s: %s", torrent_ids, e)
+            return False
+
+    async def pause(self, torrent_id: str) -> bool:
+        """Pause / stop a single torrent."""
+        return await self.pause_torrents([torrent_id])
+
+    async def pause_torrents(self, torrent_ids: List[str]) -> bool:
+        """Pause / stop multiple torrents."""
+        if not torrent_ids:
+            return True
+        logger.info("Requesting pause/stop for %d torrent(s): %s", len(torrent_ids), torrent_ids)
+        payload = {
+            "method": "torrent-stop",
+            "arguments": {"ids": [self._normalize_id(i) for i in torrent_ids]}
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await self._post_rpc(client, payload)
+                return res.get("result") == "success"
+        except Exception as e:
+            logger.error("Failed to pause torrents %s: %s", torrent_ids, e)
             return False
 
     async def delete_torrent(self, torrent_id: str, delete_files: bool = True) -> bool:

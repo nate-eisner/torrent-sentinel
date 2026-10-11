@@ -20,3 +20,11 @@ class MockVPNAdapter(BaseVPNAdapter):
 
     async def get_current_profile(self) -> Optional[LocationProfile]:
         return self.current_profile
+
+    async def disconnect(self) -> bool:
+        self.current_profile = None
+        return True
+
+    async def is_connected(self) -> bool:
+        return self.current_profile is not None
+

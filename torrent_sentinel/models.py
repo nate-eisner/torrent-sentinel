@@ -148,7 +148,18 @@ class UnifiedTorrentItem(BaseModel):
     servarr_queue_id: Optional[int] = None
     is_errored: bool = False
     is_private: bool = False
+    is_off_vpn: bool = False
     latest_judgement: Optional[TorrentJudgement] = None
+
+class OffVpnState(BaseModel):
+    is_active: bool = False
+    torrent_id: Optional[str] = None
+    torrent_hash: Optional[str] = None
+    torrent_name: Optional[str] = None
+    paused_torrent_ids: List[str] = Field(default_factory=list)
+    previous_vpn_location: Optional[str] = None
+    started_at: Optional[datetime] = None
+    auto_restore_on_complete: bool = True
 
 class OllamaDiagnosis(BaseModel):
     should_rotate: bool

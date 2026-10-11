@@ -70,6 +70,23 @@ class DiscordDispatcher(BaseNotificationDispatcher):
         except Exception as e:
             logger.error("Discord recovery notification failed: %s", e)
 
+    async def send_alert(self, title: str, message: str, color: int = 16753920):
+        if not self.webhook_url:
+            return
+        payload = {
+            "embeds": [{
+                "title": title,
+                "color": color,
+                "description": message,
+                "timestamp": datetime.datetime.now().isoformat()
+            }]
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(self.webhook_url, json=payload, timeout=10.0)
+        except Exception as e:
+            logger.error("Discord alert failed: %s", e)
+
 class TelegramDispatcher(BaseNotificationDispatcher):
     def __init__(self, token: Optional[str], chat_id: Optional[str]):
         self.token = token
@@ -108,6 +125,17 @@ class TelegramDispatcher(BaseNotificationDispatcher):
         except Exception as e:
             logger.error("Telegram recovery notification failed: %s", e)
 
+    async def send_alert(self, title: str, message: str):
+        if not self.token or not self.chat_id:
+            return
+        msg = f"*{title}*\n\n{message}"
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(url, json={"chat_id": self.chat_id, "text": msg, "parse_mode": "Markdown"}, timeout=10.0)
+        except Exception as e:
+            logger.error("Telegram alert failed: %s", e)
+
 class NotificationDispatcher:
     def __init__(self):
         self.dispatchers = []
@@ -128,3 +156,15 @@ class NotificationDispatcher:
         tasks = [d.send_swarm_recovery(torrent_name, peer_gain, location) for d in self.dispatchers]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def dispatch_alert(self, title: str, message: str, color: int = 16753920):
+        tasks = []
+        for d in self.dispatchers:
+            if hasattr(d, "send_alert"):
+                if isinstance(d, DiscordDispatcher):
+                    tasks.append(d.send_alert(title, message, color=color))
+                else:
+                    tasks.append(d.send_alert(title, message))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+

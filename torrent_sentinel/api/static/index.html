@@ -74,6 +74,12 @@
                         </label>
                     </div>
 
+                    <!-- WireGuard VPN Gateway Power Control -->
+                    <button id="vpn-power-btn" onclick="toggleVpnPower()" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/60 active:scale-95 shadow-sm" title="WireGuard VPN Gateway power control">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400" id="vpn-power-icon"></i>
+                        <span id="vpn-power-text">VPN: Active</span>
+                    </button>
+
                     <!-- VPN Rotation Toggle (Active / Paused) -->
                     <div class="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3.5 py-1.5 rounded-xl" title="Pause or resume automated VPN rotation">
                         <div class="flex items-center gap-1.5">
@@ -144,6 +150,27 @@
                 <div id="stat-failover-status" class="text-2xl font-bold text-slate-300">Disabled</div>
                 <div class="text-xs text-slate-400 mt-1">Toggle via header switch</div>
             </div>
+        </div>
+
+        <!-- Solo Off-VPN Active Banner -->
+        <div id="solo-off-vpn-banner" class="hidden mb-6 p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-start md:items-center gap-3.5">
+                <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0">
+                    <i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-sm font-bold text-amber-300">Solo Off-VPN Mode Active</h3>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide">Direct Swarm</span>
+                    </div>
+                    <p class="text-xs text-amber-200/90 mt-0.5">
+                        WireGuard VPN is disconnected. Torrent <span id="off-vpn-banner-name" class="font-semibold text-white font-mono">--</span> is running solo. <span id="off-vpn-banner-paused" class="font-semibold text-white">0</span> other torrent(s) are paused.
+                    </p>
+                </div>
+            </div>
+            <button onclick="restoreFromOffVpn()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/30 active:scale-95 shrink-0 border border-emerald-400/30">
+                <i data-lucide="shield-check" class="w-4 h-4"></i> Restore VPN & Resume Fleet
+            </button>
         </div>
 
         <!-- Main Content Area -->
@@ -314,6 +341,20 @@
 
                 <!-- VPN Rotation Pane -->
                 <div id="pane-vpn" class="p-4 space-y-3 overflow-y-auto flex-1 hidden">
+                    <!-- WireGuard Gateway Power Card -->
+                    <div id="vpn-pane-power-controls" class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs font-semibold text-white flex items-center gap-1.5">
+                                <span id="vpn-pane-power-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                WireGuard Gateway: <span id="vpn-pane-power-state" class="text-emerald-400 font-medium">Connected</span>
+                            </div>
+                            <div id="vpn-pane-power-sub" class="text-[11px] text-slate-400 mt-0.5">All torrent traffic tunneled securely</div>
+                        </div>
+                        <button id="vpn-pane-power-btn" onclick="toggleVpnPower()" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all">
+                            <span id="vpn-pane-power-btn-text">Disable</span>
+                        </button>
+                    </div>
+
                     <div id="vpn-pane-controls" class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
                         <div>
                             <div class="text-xs font-semibold text-white flex items-center gap-1.5">
@@ -535,6 +576,64 @@
         </div>
     </div>
 
+    <!-- Solo Off-VPN Confirmation Modal -->
+    <div id="modal-off-vpn-confirm" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Run Solo Off-VPN Mode</h3>
+                        <p class="text-[11px] text-slate-400">Direct host connection mode</p>
+                    </div>
+                </div>
+                <button onclick="closeOffVpnModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 space-y-4 text-xs">
+                <div class="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3.5 space-y-2 text-amber-200/90 leading-relaxed">
+                    <p class="font-semibold text-amber-300 flex items-center gap-1.5">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                        Target Torrent:
+                    </p>
+                    <p id="off-vpn-modal-torrent-name" class="font-mono text-white text-xs bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 break-words">--</p>
+                </div>
+
+                <div class="space-y-2 text-slate-300 text-xs">
+                    <p class="font-medium text-white">What will happen when activated:</p>
+                    <ul class="space-y-1.5 list-disc list-inside text-slate-400">
+                        <li><span class="text-white font-medium">All other torrents will pause</span> to avoid leaking on the unencrypted direct connection.</li>
+                        <li><span class="text-white font-medium">WireGuard VPN tunnel will disconnect</span>.</li>
+                        <li>This torrent will download directly via your ISP connection.</li>
+                        <li>Sentinel can automatically restore VPN and resume your other torrents when done.</li>
+                    </ul>
+                </div>
+
+                <label class="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-slate-700 transition-colors">
+                    <input type="checkbox" id="off-vpn-auto-restore" class="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0 w-4 h-4" checked>
+                    <div>
+                        <div class="font-semibold text-white">Auto-restore VPN on completion</div>
+                        <div class="text-[11px] text-slate-400">When download reaches 100%, pause it, re-connect WireGuard, and resume other torrents.</div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-end gap-2.5">
+                <button onclick="closeOffVpnModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition-all">Cancel</button>
+                <button id="off-vpn-confirm-submit-btn" onclick="executeRunOffVpn()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold flex items-center gap-1.5 transition-all shadow-lg shadow-amber-600/20 active:scale-95">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i> Disconnect VPN & Run Solo
+                </button>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // State variables
@@ -546,6 +645,9 @@
         let sortDirection = 'asc'; // 'asc' | 'desc'
         let configuredWebUis = [];
         let configuredWebUisMap = {};
+        let isGlobalOffVpnMode = false;
+        let currentTargetTorrentId = null;
+        let currentTargetTorrentName = '';
 
         function resolveWebUrl(rawUrl) {
             if (!rawUrl) return '#';
@@ -964,6 +1066,16 @@
                     </span>
                 ` : '';
 
+                const offVpnBadge = t.is_off_vpn ? `
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse" title="Running Solo directly off VPN">
+                        <i data-lucide="shield-alert" class="w-2.5 h-2.5"></i> Solo Off-VPN
+                    </span>
+                ` : (isGlobalOffVpnMode && t.status_message && t.status_message.includes('Solo Off-VPN') ? `
+                    <span class="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700">
+                        Paused (Solo Mode)
+                    </span>
+                ` : '');
+
                 const boostActionBtn = t.is_private ? `
                     <button disabled title="Private swarm - tracker boosting disabled for tracker rules protection" class="p-1.5 rounded-lg bg-slate-800/40 text-slate-600 cursor-not-allowed border border-slate-800">
                         <i data-lucide="shield" class="w-4 h-4"></i>
@@ -971,6 +1083,16 @@
                 ` : `
                     <button onclick="boostTorrent('${t.id}')" title="Inject verified public trackers & re-announce" class="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white transition-all border border-blue-500/20 active:scale-95">
                         <i data-lucide="zap" class="w-4 h-4"></i>
+                    </button>
+                `;
+
+                const offVpnActionBtn = t.is_off_vpn ? `
+                    <button onclick="restoreFromOffVpn()" title="Running Solo Off-VPN! Click to restore VPN and resume fleet" class="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500 hover:text-white transition-all border border-amber-500/40 animate-pulse active:scale-95">
+                        <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    </button>
+                ` : `
+                    <button onclick="confirmRunOffVpn('${t.id}', '${t.name.replace(/'/g, "\\'")}')" title="Run Solo Off-VPN (Pauses all other torrents and disconnects VPN)" class="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:bg-amber-600/20 hover:text-amber-400 transition-all border border-slate-700/80 active:scale-95">
+                        <i data-lucide="shield-off" class="w-4 h-4"></i>
                     </button>
                 `;
 
@@ -1003,6 +1125,7 @@
                                 <span class="text-[11px] font-mono text-slate-500">#${shortHash}</span>
                                 ${privateBadge}
                                 ${servarrBadge}
+                                ${offVpnBadge}
                             </div>
                         </td>
                         <td class="px-4 py-4 whitespace-nowrap">
@@ -1034,6 +1157,7 @@
                                     <i data-lucide="sparkles" class="w-4 h-4"></i>
                                 </button>
                                 ${boostActionBtn}
+                                ${offVpnActionBtn}
                                 <button onclick="recheckTorrent('${t.id}')" title="Force integrity verification & resume" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-all border border-slate-700 active:scale-95">
                                     <i data-lucide="rotate-cw" class="w-4 h-4"></i>
                                 </button>
@@ -1064,8 +1188,105 @@
                 });
                 renderWebUisBar(configuredWebUis);
 
+                // Sync Global Off-VPN Mode
+                isGlobalOffVpnMode = Boolean(status.off_vpn_mode);
+
+                // Solo Off-VPN Banner Sync
+                const soloBanner = document.getElementById('solo-off-vpn-banner');
+                if (soloBanner) {
+                    if (status.off_vpn_mode) {
+                        soloBanner.classList.remove('hidden');
+                        const nameEl = document.getElementById('off-vpn-banner-name');
+                        if (nameEl) nameEl.innerText = status.off_vpn_torrent_name || ('Torrent #' + status.off_vpn_torrent_id);
+                        const pausedEl = document.getElementById('off-vpn-banner-paused');
+                        if (pausedEl) pausedEl.innerText = status.off_vpn_paused_count || 0;
+                    } else {
+                        soloBanner.classList.add('hidden');
+                    }
+                }
+
+                // WireGuard Power Header Button Sync
+                const vpnPowerBtn = document.getElementById('vpn-power-btn');
+                const vpnPowerIcon = document.getElementById('vpn-power-icon');
+                const vpnPowerText = document.getElementById('vpn-power-text');
+                if (vpnPowerBtn && vpnPowerText) {
+                    if (status.off_vpn_mode) {
+                        vpnPowerBtn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border bg-amber-950/40 text-amber-300 border-amber-800/60 hover:bg-amber-900/60 active:scale-95 shadow-sm';
+                        vpnPowerText.innerText = 'VPN: Solo Mode';
+                        vpnPowerBtn.title = 'Solo Off-VPN mode active. Click to restore VPN & resume fleet.';
+                        if (vpnPowerIcon) {
+                            vpnPowerIcon.setAttribute('data-lucide', 'shield-alert');
+                            vpnPowerIcon.className = 'w-4 h-4 text-amber-400 animate-pulse';
+                        }
+                    } else if (!status.vpn_enabled) {
+                        vpnPowerBtn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border bg-rose-950/40 text-rose-300 border-rose-800/60 hover:bg-rose-900/60 active:scale-95 shadow-sm';
+                        vpnPowerText.innerText = 'VPN: Disabled';
+                        vpnPowerBtn.title = 'WireGuard VPN Gateway is disabled. Click to enable VPN.';
+                        if (vpnPowerIcon) {
+                            vpnPowerIcon.setAttribute('data-lucide', 'shield-off');
+                            vpnPowerIcon.className = 'w-4 h-4 text-rose-400';
+                        }
+                    } else {
+                        vpnPowerBtn.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/60 active:scale-95 shadow-sm';
+                        vpnPowerText.innerText = status.vpn_connected !== false ? 'VPN: Active' : 'VPN: Disconnected';
+                        vpnPowerBtn.title = 'WireGuard VPN Gateway is active. Click to disable VPN.';
+                        if (vpnPowerIcon) {
+                            vpnPowerIcon.setAttribute('data-lucide', 'shield-check');
+                            vpnPowerIcon.className = 'w-4 h-4 text-emerald-400';
+                        }
+                    }
+                }
+
+                // Rotate VPN Header Button Guard
+                const rotBtn = document.getElementById('rotate-btn');
+                if (rotBtn) {
+                    if (!status.vpn_enabled || status.off_vpn_mode) {
+                        rotBtn.disabled = true;
+                        rotBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                        rotBtn.title = status.off_vpn_mode ? 'VPN rotation is paused while Solo Off-VPN is active' : 'WireGuard VPN is disabled';
+                    } else {
+                        rotBtn.disabled = false;
+                        rotBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        rotBtn.title = 'Rotate VPN';
+                    }
+                }
+
                 document.getElementById('stat-torrents').innerText = status.active_torrents;
-                document.getElementById('stat-location').innerText = status.current_location || 'Unknown';
+                const statLocationEl = document.getElementById('stat-location');
+                const statRotBadgeEl = document.getElementById('stat-rotation-badge');
+                const statRotTimeEl = document.getElementById('stat-rot-time');
+
+                if (status.off_vpn_mode) {
+                    if (statLocationEl) {
+                        statLocationEl.innerText = 'Direct (Solo Mode)';
+                        statLocationEl.className = 'text-2xl font-bold text-amber-400 truncate';
+                    }
+                    if (statRotBadgeEl) {
+                        statRotBadgeEl.innerText = 'Solo Direct';
+                        statRotBadgeEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-900/40 text-amber-300 border border-amber-800/40';
+                    }
+                    if (statRotTimeEl) {
+                        statRotTimeEl.innerText = `Solo: ${status.off_vpn_torrent_name || status.off_vpn_torrent_id} (${status.off_vpn_paused_count || 0} paused)`;
+                    }
+                } else if (!status.vpn_enabled) {
+                    if (statLocationEl) {
+                        statLocationEl.innerText = 'Direct (VPN Off)';
+                        statLocationEl.className = 'text-2xl font-bold text-rose-400 truncate';
+                    }
+                    if (statRotBadgeEl) {
+                        statRotBadgeEl.innerText = 'Disabled';
+                        statRotBadgeEl.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-900/40 text-rose-300 border border-rose-800/40';
+                    }
+                    if (statRotTimeEl) {
+                        statRotTimeEl.innerText = 'VPN disabled • Clear internet';
+                    }
+                } else {
+                    if (statLocationEl) {
+                        statLocationEl.innerText = status.current_location || 'Unknown';
+                        statLocationEl.className = 'text-2xl font-bold text-emerald-400 truncate';
+                    }
+                }
+
                 const healthy = status.healthy_trackers_count !== undefined ? status.healthy_trackers_count : status.cached_trackers_count;
                 const total = status.cached_trackers_count || 0;
                 document.getElementById('stat-trackers').innerText = `${healthy} / ${total}`;
@@ -1098,6 +1319,28 @@
                 document.getElementById('stat-failover-status').innerText = status.auto_failover_enabled ? 'Enabled' : 'Disabled';
                 document.getElementById('stat-failover-status').className = `text-2xl font-bold ${status.auto_failover_enabled ? 'text-purple-400' : 'text-slate-400'}`;
 
+                // VPN Pane Gateway Power Card sync
+                const panePowerDot = document.getElementById('vpn-pane-power-dot');
+                const panePowerState = document.getElementById('vpn-pane-power-state');
+                const panePowerSub = document.getElementById('vpn-pane-power-sub');
+                const panePowerBtnText = document.getElementById('vpn-pane-power-btn-text');
+                if (status.off_vpn_mode) {
+                    if (panePowerDot) panePowerDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+                    if (panePowerState) { panePowerState.innerText = 'Solo Mode'; panePowerState.className = 'text-amber-400 font-medium'; }
+                    if (panePowerSub) panePowerSub.innerText = `Direct traffic (${status.off_vpn_paused_count || 0} paused)`;
+                    if (panePowerBtnText) panePowerBtnText.innerText = 'Restore VPN';
+                } else if (!status.vpn_enabled) {
+                    if (panePowerDot) panePowerDot.className = 'w-2 h-2 rounded-full bg-rose-400';
+                    if (panePowerState) { panePowerState.innerText = 'Disabled'; panePowerState.className = 'text-rose-400 font-medium'; }
+                    if (panePowerSub) panePowerSub.innerText = 'WireGuard tunnel offline (direct traffic)';
+                    if (panePowerBtnText) panePowerBtnText.innerText = 'Enable';
+                } else {
+                    if (panePowerDot) panePowerDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                    if (panePowerState) { panePowerState.innerText = status.vpn_connected !== false ? 'Connected' : 'Disconnected'; panePowerState.className = 'text-emerald-400 font-medium'; }
+                    if (panePowerSub) panePowerSub.innerText = 'All torrent traffic tunneled securely';
+                    if (panePowerBtnText) panePowerBtnText.innerText = 'Disable';
+                }
+
                 // VPN Rotation setting sync
                 const isRotEnabled = Boolean(status.auto_vpn_rotation_enabled);
                 const rotToggle = document.getElementById('rotation-toggle');
@@ -1114,31 +1357,33 @@
                 if (isRotEnabled) {
                     if (rotDot) rotDot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
                     if (rotText) { rotText.innerText = 'Active'; rotText.className = 'text-[11px] font-semibold text-emerald-400 min-w-[42px]'; }
-                    if (rotBadge) { rotBadge.innerText = 'Active'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-800/40'; }
+                    if (rotBadge && !status.off_vpn_mode && status.vpn_enabled) { rotBadge.innerText = 'Active'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-800/40'; }
                     if (paneDot) paneDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
                     if (paneState) { paneState.innerText = 'Active'; paneState.className = 'text-emerald-400 font-medium'; }
                     if (paneBtnText) paneBtnText.innerText = 'Pause';
                 } else {
                     if (rotDot) rotDot.className = 'w-2 h-2 rounded-full bg-amber-400';
                     if (rotText) { rotText.innerText = 'Paused'; rotText.className = 'text-[11px] font-semibold text-amber-400 min-w-[42px]'; }
-                    if (rotBadge) { rotBadge.innerText = 'Paused'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-900/40 text-amber-300 border border-amber-800/40'; }
+                    if (rotBadge && !status.off_vpn_mode && status.vpn_enabled) { rotBadge.innerText = 'Paused'; rotBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-900/40 text-amber-300 border border-amber-800/40'; }
                     if (paneDot) paneDot.className = 'w-2 h-2 rounded-full bg-amber-400';
                     if (paneState) { paneState.innerText = 'Paused'; paneState.className = 'text-amber-400 font-medium'; }
                     if (paneBtnText) paneBtnText.innerText = 'Resume';
                 }
 
-                let rotTextStatus = isRotEnabled
-                    ? (status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready')
-                    : 'Auto-rotation Paused';
-                document.getElementById('stat-rot-time').innerText = rotTextStatus;
-                try {
-                    const locRes = await fetch('/api/locations');
-                    if (locRes.ok) {
-                        const locData = await locRes.json();
-                        const statusSuffix = isRotEnabled ? rotTextStatus : 'Paused';
-                        document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${statusSuffix}`;
-                    }
-                } catch (_) {}
+                if (!status.off_vpn_mode && status.vpn_enabled) {
+                    let rotTextStatus = isRotEnabled
+                        ? (status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready')
+                        : 'Auto-rotation Paused';
+                    document.getElementById('stat-rot-time').innerText = rotTextStatus;
+                    try {
+                        const locRes = await fetch('/api/locations');
+                        if (locRes.ok) {
+                            const locData = await locRes.json();
+                            const statusSuffix = isRotEnabled ? rotTextStatus : 'Paused';
+                            document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${statusSuffix}`;
+                        }
+                    } catch (_) {}
+                }
 
                 // 2. Torrents Queue
                 const torrentRes = await fetch('/api/torrents');
@@ -1570,6 +1815,108 @@
             await setVpnRotationSetting(!currentEnabled);
         }
 
+        // VPN Gateway Power Control
+        async function toggleVpnPower() {
+            if (isGlobalOffVpnMode) {
+                if (confirm('Solo Off-VPN mode is currently active. Would you like to restore the VPN and resume your other torrents?')) {
+                    await restoreFromOffVpn();
+                }
+                return;
+            }
+            try {
+                const res = await fetch('/api/vpn/toggle', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.vpn_enabled) {
+                        showToast('🛡️ WireGuard VPN Gateway enabled and connected!');
+                    } else {
+                        showToast('⚠️ WireGuard VPN Gateway disabled. Traffic is running direct.', true);
+                    }
+                    fetchData();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.detail || 'Failed to toggle VPN gateway', true);
+                }
+            } catch (err) {
+                showToast('Error toggling VPN: ' + err.message, true);
+            }
+        }
+
+        // Solo Off-VPN Modal and Execution
+        function confirmRunOffVpn(id, name) {
+            currentTargetTorrentId = id;
+            currentTargetTorrentName = name;
+            const nameEl = document.getElementById('off-vpn-modal-torrent-name');
+            if (nameEl) nameEl.textContent = name;
+            const modal = document.getElementById('modal-off-vpn-confirm');
+            if (modal) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            }
+            lucide.createIcons();
+        }
+
+        function closeOffVpnModal() {
+            const modal = document.getElementById('modal-off-vpn-confirm');
+            if (!modal) return;
+            modal.classList.add('opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                currentTargetTorrentId = null;
+            }, 200);
+        }
+
+        async function executeRunOffVpn() {
+            if (!currentTargetTorrentId) return;
+            const id = currentTargetTorrentId;
+            const autoRestore = document.getElementById('off-vpn-auto-restore')?.checked ?? true;
+            const btn = document.getElementById('off-vpn-confirm-submit-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+            }
+
+            try {
+                const res = await fetch(`/api/torrents/${id}/run-off-vpn`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auto_restore_on_complete: autoRestore })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    closeOffVpnModal();
+                    showToast(`⚡ Solo Off-VPN active: ${data.paused_torrent_ids?.length || 0} other torrents paused, VPN disconnected.`);
+                    fetchData();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.detail || 'Failed to start Solo Off-VPN mode', true);
+                }
+            } catch (e) {
+                showToast('Network error: ' + e.message, true);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }
+            }
+        }
+
+        async function restoreFromOffVpn() {
+            try {
+                const res = await fetch('/api/torrents/off-vpn/restore', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    showToast(`🛡️ VPN restored & ${data.resumed_torrent_ids?.length || 0} torrents resumed!`);
+                    fetchData();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.detail || 'Failed to restore from Solo Off-VPN mode', true);
+                }
+            } catch (e) {
+                showToast('Network error: ' + e.message, true);
+            }
+        }
+
         // Rotate VPN button
         document.getElementById('rotate-btn').addEventListener('click', async () => {
             const btn = document.getElementById('rotate-btn');
@@ -1581,7 +1928,8 @@
                 if (res.ok) {
                     showToast('🔄 WireGuard VPN rotation triggered!');
                 } else {
-                    showToast('Failed to trigger rotation.', true);
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.detail || 'Failed to trigger rotation.', true);
                 }
             } catch (err) {
                 showToast('Error: ' + err.message, true);
@@ -1660,6 +2008,10 @@
                 const modal = document.getElementById('judge-modal');
                 if (modal && !modal.classList.contains('hidden')) {
                     closeJudgeModal();
+                }
+                const offModal = document.getElementById('modal-off-vpn-confirm');
+                if (offModal && !offModal.classList.contains('hidden')) {
+                    closeOffVpnModal();
                 }
             }
         });

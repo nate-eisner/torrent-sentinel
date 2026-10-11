@@ -12,7 +12,8 @@ from torrent_sentinel.models import (
     TorrentVerdict, 
     RecommendedAction,
     AutopilotEvent,
-    AutopilotMode
+    AutopilotMode,
+    OffVpnState
 )
 
 
@@ -260,6 +261,33 @@ class Storage:
 
     async def set_ollama_model(self, model: str):
         await self.set_setting("ollama_model", model.strip())
+
+    async def get_vpn_enabled(self) -> bool:
+        val = await self.get_setting("vpn_enabled")
+        if val is not None:
+            return val.lower() in ("true", "1", "yes")
+        return settings.VPN_ENABLED
+
+    async def set_vpn_enabled(self, enabled: bool):
+        await self.set_setting("vpn_enabled", "true" if enabled else "false")
+
+    async def get_off_vpn_state(self) -> Optional[OffVpnState]:
+        val = await self.get_setting("off_vpn_state")
+        if val and val.strip():
+            try:
+                import json
+                data = json.loads(val)
+                return OffVpnState(**data)
+            except Exception as e:
+                logger.error("Failed to parse off_vpn_state: %s", e)
+        return None
+
+    async def set_off_vpn_state(self, state: Optional[OffVpnState]):
+        if state is None:
+            await self.set_setting("off_vpn_state", "")
+        else:
+            await self.set_setting("off_vpn_state", state.model_dump_json())
+
 
     async def record_autopilot_event(self, event: AutopilotEvent):
         logger.debug("Recording autopilot event %s (action: %s, mode: %s)...", event.id, event.action_type, event.mode)

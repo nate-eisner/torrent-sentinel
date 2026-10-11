@@ -274,24 +274,60 @@ class UnraidWireGuardAdapter(BaseVPNAdapter):
             logger.error("Unexpected error during WireGuard rotation: %s", e, exc_info=True)
             return False
 
-    async def get_current_profile(self) -> Optional[LocationProfile]:
-        if self._current_profile is not None:
-            return self._current_profile
+    async def disconnect(self) -> bool:
+        """Tears down any active WireGuard tunnels and restores direct networking."""
+        logger.info("Disconnecting WireGuard VPN tunnels...")
+        try:
+            self._teardown_existing_interfaces()
+            if self._current_profile:
+                try:
+                    subprocess.run(["wg-quick", "down", self._current_profile.config_file], capture_output=True, text=True)
+                except Exception:
+                    pass
+            if self.interface:
+                try:
+                    subprocess.run(["wg-quick", "down", self.interface], capture_output=True, text=True)
+                except Exception:
+                    pass
+            self._current_profile = None
+            self._ensure_resolv_conf()
+            self._apply_lan_routing()
+            logger.info("WireGuard VPN successfully disconnected. Direct traffic routing active.")
+            return True
+        except Exception as e:
+            logger.error("Error disconnecting WireGuard: %s", e, exc_info=True)
+            return False
 
-        # Check if an active WireGuard interface is already running
+    async def is_connected(self) -> bool:
+        return (await self.get_current_profile()) is not None
+
+    async def get_current_profile(self) -> Optional[LocationProfile]:
+        # Check if an active WireGuard interface is running
         try:
             show_res = subprocess.run(["wg", "show", "interfaces"], capture_output=True, text=True)
-            if show_res.returncode == 0 and show_res.stdout.strip():
-                active_ifaces = show_res.stdout.strip().split()
-                if active_ifaces:
-                    locations = await self.get_available_locations()
-                    for loc in locations:
-                        if loc.id in active_ifaces:
-                            self._current_profile = loc
-                            return loc
+            if show_res.returncode == 0:
+                active_ifaces = show_res.stdout.strip().split() if show_res.stdout.strip() else []
+                if not active_ifaces:
+                    self._current_profile = None
+                    return None
+                if self._current_profile and self._current_profile.id in active_ifaces:
+                    return self._current_profile
+                locations = await self.get_available_locations()
+                for loc in locations:
+                    if loc.id in active_ifaces:
+                        self._current_profile = loc
+                        return loc
+                self._current_profile = None
+                return None
+            else:
+                self._current_profile = None
+                return None
+        except FileNotFoundError:
+            pass
         except Exception:
             pass
 
-        return None
+        return self._current_profile
 
 WireGuardGatewayAdapter = UnraidWireGuardAdapter
+

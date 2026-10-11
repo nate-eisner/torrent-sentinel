@@ -459,6 +459,229 @@ def autopilot_run_cmd(
 
     asyncio.run(_run())
 
+vpn_app = typer.Typer(help="Manage VPN Gateway state (enable, disable, status)")
+app.add_typer(vpn_app, name="vpn")
+
+@vpn_app.command("status")
+def vpn_status_cmd():
+    """Display current VPN connection status, location, and Off-VPN mode."""
+    setup_logging()
+
+    async def _status():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        vpn_enabled = await storage.get_vpn_enabled()
+        connected = await adapter.is_connected()
+        profile = await adapter.get_current_profile()
+        off_vpn_state = await storage.get_off_vpn_state()
+
+        status_style = "bold green" if (vpn_enabled and connected) else "bold red"
+        status_text = "CONNECTED" if (vpn_enabled and connected) else ("DISABLED" if not vpn_enabled else "DISCONNECTED")
+
+        loc_text = profile.name if profile else ("Direct (No VPN)" if not vpn_enabled else "None")
+        off_text = f"[bold yellow]ACTIVE[/bold yellow] (Torrent: {off_vpn_state.torrent_name or off_vpn_state.torrent_id}, Paused: {len(off_vpn_state.paused_torrent_ids)})" if (off_vpn_state and off_vpn_state.is_active) else "[dim]Inactive[/dim]"
+
+        console.print(Panel(
+            f"[bold]VPN Gateway Status:[/bold] [{status_style}]{status_text}[/{status_style}]\n"
+            f"[bold]VPN Enabled in Config:[/bold] {'[green]YES[/green]' if vpn_enabled else '[red]NO[/red]'}\n"
+            f"[bold]Active Location:[/bold] [cyan]{loc_text}[/cyan]\n"
+            f"[bold]WireGuard Interface:[/bold] {settings.VPN_INTERFACE}\n"
+            f"[bold]Solo Off-VPN Mode:[/bold] {off_text}",
+            title="🛡️ VPN Gateway Status",
+            expand=False
+        ))
+
+    asyncio.run(_status())
+
+@vpn_app.command("disable")
+def vpn_disable_cmd():
+    """Disable VPN gateway and route traffic directly without VPN."""
+    setup_logging()
+
+    async def _disable():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        await storage.set_vpn_enabled(False)
+        await adapter.disconnect()
+        console.print("[bold yellow]⚠️ VPN Gateway disabled.[/bold yellow]")
+        console.print("[dim]WireGuard tunnel disconnected. Swarm traffic is now routing directly over host network.[/dim]")
+
+    asyncio.run(_disable())
+
+@vpn_app.command("enable")
+def vpn_enable_cmd(
+    location: Optional[str] = typer.Argument(None, help="Specific VPN location profile ID to connect to")
+):
+    """Enable VPN gateway and establish WireGuard tunnel."""
+    setup_logging()
+
+    async def _enable():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        await storage.set_vpn_enabled(True)
+        available = await adapter.get_available_locations()
+        target = None
+        if location and available:
+            pref = location.lower().strip()
+            target = next((p for p in available if p.id.lower() == pref or p.name.lower() == pref), None)
+        if not target and available:
+            top_locations = await storage.get_top_locations(limit=1)
+            if top_locations:
+                target = next((p for p in available if p.id == top_locations[0]), None)
+            if not target:
+                target = available[0]
+
+        if target:
+            success = await adapter.rotate_to(target)
+            if success:
+                console.print(f"[bold green]✓ VPN Gateway enabled and connected to:[/bold green] [bold cyan]{target.name}[/bold cyan]")
+            else:
+                console.print(f"[bold red]✗ Failed to establish VPN connection to:[/bold red] {target.name}")
+        else:
+            console.print("[bold yellow]VPN enabled in settings, but no WireGuard profiles were found in configs directory.[/bold yellow]")
+
+    asyncio.run(_enable())
+
+off_vpn_app = typer.Typer(help="Manage Solo Off-VPN execution (pause fleet, disconnect VPN, run single torrent)")
+app.add_typer(off_vpn_app, name="off-vpn")
+
+@off_vpn_app.command("start")
+def off_vpn_start_cmd(
+    identifier: str = typer.Argument(..., help="Torrent ID or Hash to run off-VPN"),
+    no_auto_restore: bool = typer.Option(False, "--no-auto-restore", help="Do not automatically restore VPN when download finishes")
+):
+    """Run a specific torrent off-VPN (pauses all other torrents and disables VPN)."""
+    setup_logging()
+    from torrent_sentinel.clients.transmission import TransmissionClient
+    from torrent_sentinel.models import OffVpnState
+    from datetime import datetime, timezone
+
+    async def _start():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        transmission = TransmissionClient()
+
+        torrents = await transmission.get_torrents()
+        target = next((t for t in torrents if t.id == identifier or t.hash.lower() == identifier.lower()), None)
+        if not target:
+            console.print(f"[bold red]Torrent '{identifier}' not found in Transmission.[/bold red]")
+            return
+
+        cur_prof = await adapter.get_current_profile()
+        prev_loc = cur_prof.id if cur_prof else None
+
+        running_other_ids = [t.id for t in torrents if t.id != target.id and str(t.status) not in ("0", "stopped", "paused")]
+        all_other_ids = [t.id for t in torrents if t.id != target.id]
+
+        if all_other_ids:
+            console.print(f"[cyan]Pausing {len(all_other_ids)} other torrent(s) in Transmission...[/cyan]")
+            await transmission.pause_torrents(all_other_ids)
+
+        console.print(f"[cyan]Starting target torrent '{target.name}'...[/cyan]")
+        await transmission.resume(target.id)
+
+        console.print("[yellow]Disconnecting WireGuard VPN tunnel...[/yellow]")
+        await adapter.disconnect()
+
+        state = OffVpnState(
+            is_active=True,
+            torrent_id=target.id,
+            torrent_hash=target.hash,
+            torrent_name=target.name,
+            paused_torrent_ids=running_other_ids,
+            previous_vpn_location=prev_loc,
+            started_at=datetime.now(timezone.utc),
+            auto_restore_on_complete=(not no_auto_restore)
+        )
+        await storage.set_off_vpn_state(state)
+
+        console.print(Panel(
+            f"[bold green]🚀 Solo Off-VPN Mode Active[/bold green]\n\n"
+            f"[bold]Target Torrent:[/bold] {target.name} (ID: {target.id})\n"
+            f"[bold]Paused Queue Torrents:[/bold] {len(running_other_ids)}\n"
+            f"[bold]VPN Gateway:[/bold] [bold red]DISCONNECTED (Direct Routing)[/bold red]\n"
+            f"[bold]Auto-Restore on 100% Completion:[/bold] {'[green]YES[/green]' if not no_auto_restore else '[yellow]NO[/yellow]'}\n\n"
+            f"[dim]Run 'torrent-sentinel off-vpn stop' at any time to re-enable VPN and resume the fleet.[/dim]",
+            title="⚠️ Solo Off-VPN Started",
+            expand=False
+        ))
+
+    asyncio.run(_start())
+
+@off_vpn_app.command("stop")
+def off_vpn_stop_cmd():
+    """Stop Solo Off-VPN mode: re-establish VPN gateway and resume paused fleet."""
+    setup_logging()
+    from torrent_sentinel.clients.transmission import TransmissionClient
+
+    async def _stop():
+        storage = Storage()
+        await storage.initialize()
+        state = await storage.get_off_vpn_state()
+        if not state or not state.is_active:
+            console.print("[yellow]Solo Off-VPN mode is not currently active.[/yellow]")
+            return
+
+        adapter = get_vpn_adapter()
+        transmission = TransmissionClient()
+
+        console.print("[cyan]Re-establishing WireGuard VPN tunnel...[/cyan]")
+        await storage.set_vpn_enabled(True)
+        available = await adapter.get_available_locations()
+        target_profile = None
+        if state.previous_vpn_location and available:
+            target_profile = next((p for p in available if p.id == state.previous_vpn_location), None)
+        if not target_profile and available:
+            top_locations = await storage.get_top_locations(limit=1)
+            if top_locations:
+                target_profile = next((p for p in available if p.id == top_locations[0]), None)
+            if not target_profile:
+                target_profile = available[0]
+
+        if target_profile:
+            await adapter.rotate_to(target_profile)
+            console.print(f"[bold green]✓ VPN re-connected to:[/bold green] {target_profile.name}")
+
+        if state.paused_torrent_ids:
+            console.print(f"[cyan]Resuming {len(state.paused_torrent_ids)} previously paused torrent(s)...[/cyan]")
+            await transmission.resume_torrents(state.paused_torrent_ids)
+
+        await storage.set_off_vpn_state(None)
+        console.print("[bold green]✅ Solo Off-VPN mode ended. Normal fleet operations restored.[/bold green]")
+
+    asyncio.run(_stop())
+
+@off_vpn_app.command("status")
+def off_vpn_status_cmd():
+    """Check current Solo Off-VPN mode status."""
+    setup_logging()
+
+    async def _status():
+        storage = Storage()
+        await storage.initialize()
+        state = await storage.get_off_vpn_state()
+        if not state or not state.is_active:
+            console.print("[green]Solo Off-VPN mode is inactive. All torrents operate under standard VPN gateway.[/green]")
+            return
+
+        console.print(Panel(
+            f"[bold yellow]⚠️ SOLO OFF-VPN MODE IS ACTIVE[/bold yellow]\n\n"
+            f"[bold]Exclusive Torrent:[/bold] {state.torrent_name or state.torrent_id}\n"
+            f"[bold]Paused Queue Torrents:[/bold] {len(state.paused_torrent_ids)}\n"
+            f"[bold]Started At:[/bold] {state.started_at.strftime('%Y-%m-%d %H:%M:%S UTC') if state.started_at else 'Unknown'}\n"
+            f"[bold]Previous VPN Location:[/bold] {state.previous_vpn_location or 'Default'}\n"
+            f"[bold]Auto-Restore upon completion:[/bold] {'YES' if state.auto_restore_on_complete else 'NO'}",
+            title="Solo Off-VPN Status",
+            expand=False
+        ))
+
+    asyncio.run(_status())
+
 if __name__ == "__main__":
     app()
+
 

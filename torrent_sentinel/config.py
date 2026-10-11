@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
 
     # VPN Gateway (WireGuard)
+    VPN_ENABLED: bool = True
     VPN_TYPE: str = "wireguard"  # wireguard, unraid_wireguard, mock
     VPN_INTERFACE: str = "wg1"
     VPN_CONFIGS_DIR: str = "/app/vpn_configs/"

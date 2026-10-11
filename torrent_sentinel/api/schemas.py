@@ -24,6 +24,7 @@ class TorrentStatus(BaseModel):
     boosted_at: Optional[datetime] = None
     grace_period_expires_at: Optional[datetime] = None
     is_private: bool = False
+    is_off_vpn: bool = False
     latest_judgement: Optional[Dict[str, Any]] = None
 
 class BoostEventSummary(BaseModel):
@@ -66,12 +67,44 @@ class SystemStatus(BaseModel):
     llm_assisted_failover_enabled: bool = True
     auto_vpn_rotation_enabled: bool = True
     vpn_rotation_paused: bool = False
+    vpn_enabled: bool = True
+    vpn_connected: bool = True
+    off_vpn_mode: bool = False
+    off_vpn_torrent_id: Optional[str] = None
+    off_vpn_torrent_name: Optional[str] = None
+    off_vpn_paused_count: int = 0
     cached_trackers_count: int = 0
     healthy_trackers_count: int = 0
     ollama_enabled: bool = True
     ollama_model: Optional[str] = None
     autopilot_mode: str = "off"
     web_uis: List[WebUILink] = Field(default_factory=list)
+
+class VpnToggleRequest(BaseModel):
+    enabled: Optional[bool] = None
+    location: Optional[str] = None
+
+class OffVpnStartRequest(BaseModel):
+    auto_restore: bool = True
+
+class OffVpnStatusResponse(BaseModel):
+    is_active: bool
+    torrent_id: Optional[str] = None
+    torrent_hash: Optional[str] = None
+    torrent_name: Optional[str] = None
+    paused_count: int = 0
+    paused_torrent_ids: List[str] = Field(default_factory=list)
+    previous_vpn_location: Optional[str] = None
+    started_at: Optional[datetime] = None
+    auto_restore_on_complete: bool = True
+
+class VpnStatusResponse(BaseModel):
+    status: str = "success"
+    vpn_enabled: bool
+    connected: bool
+    current_location: Optional[str] = None
+    off_vpn_mode: bool = False
+    off_vpn_torrent_name: Optional[str] = None
 
 class AutoFailoverToggleRequest(BaseModel):
     enabled: bool

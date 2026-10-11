@@ -259,23 +259,34 @@ class AutopilotEngine:
         torrent_map = {t.id: t for t in torrents}
         torrent_map.update({t.hash.lower(): t for t in torrents if t.hash})
 
-        # 1. VPN Rotation Cooldown Guardrail
+        # 1. VPN Rotation Guardrail (Cooldown, VPN disabled, Solo Off-VPN)
         if plan.should_rotate_vpn:
-            cooldown_seconds = settings.AUTOPILOT_ROTATION_COOLDOWN_MINUTES * 60
-            history = await self.storage.get_history(limit=1)
-            if history:
-                last_event_time = history[0].timestamp
-                if last_event_time.tzinfo is None:
-                    last_event_time = last_event_time.replace(tzinfo=timezone.utc)
-                elapsed = (now - last_event_time).total_seconds()
-                if elapsed < cooldown_seconds:
-                    remaining_min = round((cooldown_seconds - elapsed) / 60.0, 1)
-                    logger.warning(
-                        "Autopilot Guardrail Triggered: VPN rotation suppressed due to cooldown (%s min remaining).",
-                        remaining_min
-                    )
+            if not await self.storage.get_vpn_enabled():
+                logger.warning("Autopilot Guardrail Triggered: VPN rotation suppressed because VPN is disabled.")
+                plan.should_rotate_vpn = False
+                plan.guardrails_applied.append("VPN rotation suppressed: VPN is disabled")
+            else:
+                off_vpn_state = await self.storage.get_off_vpn_state()
+                if off_vpn_state and off_vpn_state.is_active:
+                    logger.warning("Autopilot Guardrail Triggered: VPN rotation suppressed due to active Solo Off-VPN mode.")
                     plan.should_rotate_vpn = False
-                    plan.guardrails_applied.append(f"VPN rotation suppressed: cooldown active ({remaining_min}m remaining)")
+                    plan.guardrails_applied.append("VPN rotation suppressed: Solo Off-VPN active")
+                else:
+                    cooldown_seconds = settings.AUTOPILOT_ROTATION_COOLDOWN_MINUTES * 60
+                    history = await self.storage.get_history(limit=1)
+                    if history:
+                        last_event_time = history[0].timestamp
+                        if last_event_time.tzinfo is None:
+                            last_event_time = last_event_time.replace(tzinfo=timezone.utc)
+                        elapsed = (now - last_event_time).total_seconds()
+                        if elapsed < cooldown_seconds:
+                            remaining_min = round((cooldown_seconds - elapsed) / 60.0, 1)
+                            logger.warning(
+                                "Autopilot Guardrail Triggered: VPN rotation suppressed due to cooldown (%s min remaining).",
+                                remaining_min
+                            )
+                            plan.should_rotate_vpn = False
+                            plan.guardrails_applied.append(f"VPN rotation suppressed: cooldown active ({remaining_min}m remaining)")
 
         # 2. Action Guardrails (Confidence floor, max failovers, private immunity)
         failovers_scheduled = 0

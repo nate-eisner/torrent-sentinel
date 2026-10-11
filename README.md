@@ -40,7 +40,8 @@
 - **🔄 Smart Servarr Auto-Failover**: Correlates Transmission torrents with **Sonarr**, **Radarr**, and **Lidarr** queues. Automatically or manually blocklists dead releases and requests fresh alternative searches (`EpisodeSearch`, `MoviesSearch`, `AlbumSearch`).
 - **🛡️ Deterministic Safety Guardrails**: Hardcoded safeguards protect private trackers from leakage, enforce minimum confidence floors on failovers, cap failover velocity, and apply anti-flapping cooldowns on VPN rotations.
 - **⚡ Context-Optimized Token Efficiency**: Telemetry filtering prunes finished seeders and bounds candidates to top active/stalled downloads, reducing prompt payloads by over 95% for lightning-fast execution and zero context overflow.
-- **🔒 Dedicated VPN Gateway**: Functions as a containerized WireGuard network gateway (`--net=container:torrent-sentinel`), shielding 100% of torrent traffic with automated IP leak prevention.
+- **🔒 Dedicated VPN Gateway & Power Control**: Functions as a containerized WireGuard network gateway (`--net=container:torrent-sentinel`), shielding 100% of torrent traffic with automated IP leak prevention. Includes one-click power control to disable VPN and run direct when needed.
+- **⚡ Solo Off-VPN Mode (Exclusive Clear Swarm)**: Select any specific torrent to run exclusively off-VPN over your direct host connection. Torrent Sentinel automatically pauses all other active torrents to protect against leakage, tears down WireGuard, runs that download solo, and automatically restores VPN and resumes your fleet when the download completes (or when manually restored).
 - **🌐 LAN WebUI Bypass**: Policy routing ensures both Torrent Sentinel (`:8000`) and Transmission (`:9091`) WebUIs remain accessible directly from your home network.
 - **🔗 Servarr & Web UI Quick Links Bar**: Configurable header shortcuts to seamlessly jump to Transmission, Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, and Readarr.
 - **📊 Modern Web Dashboard & Flight Log**: Real-time stats, filterable torrent lists (All, Downloading, Stalled/Errored, Completed), live action buttons, and dual history logs (Flight Log events & VPN Rotations).
@@ -136,17 +137,45 @@ The built-in web dashboard is accessible at `http://<your-server-ip>:8000/`:
   - **Autopilot Mode**: Instant toggle between `Off`, `Advisory`, and `Full`.
   - **Runtime Model**: Live dropdown to switch active Ollama models on-the-fly.
   - **Auto Failover**: Toggle automatic Servarr blocklisting and replacement search.
+  - **VPN Power Button**: One-click toggle to enable or disable the WireGuard VPN Gateway.
   - **VPN Rotation**: Pause or activate automated VPN rotation without stopping the daemon.
   - **Rotate VPN**: One-click manual rotation to the next best WireGuard gateway.
+- **Solo Off-VPN Alert Banner**: Displays active solo torrent status, count of paused downloads, and a 1-click "Restore VPN & Resume Fleet" button.
 - **Web UIs Bar**: Direct navigation links to your configured Servarr apps and Transmission WebUI.
 - **Real-Time Fleet Grid**: Filter torrents by `All`, `Downloading`, `Stalled / Errored`, or `Completed`.
 - **Row Actions**:
   - **AI Judge**: Open deep diagnostic assessment modal for individual torrents.
   - **⚡ Boost**: Immediately inject public trackers and re-announce.
+  - **🛡️ Solo Off-VPN**: Disconnect VPN, pause all other torrents, and download this torrent exclusively.
   - **🔄 Recheck**: Force client integrity hash-check.
   - **❌ Failover**: Blocklist release in Servarr and trigger replacement search.
 - **Flight Log & History**: Real-time event log of AI decisions, executed actions, and VPN location swaps.
 - **Chat Assistant**: Interactive slide-out chat drawer to converse with Sentinel AI about your queue.
+
+---
+
+## 🛡️ WireGuard VPN Control & Solo Off-VPN Mode
+
+### 1. General VPN Gateway Power Control
+Torrent Sentinel allows you to completely disable the WireGuard VPN gateway and run Transmission directly on your host connection (clear internet) without modifying configs or restarting containers:
+- **Web UI**: Click the **VPN: Active / Disabled** button in the header or the **Disable / Enable** button in the VPN tab.
+- **CLI**: `torrent-sentinel vpn disable` or `torrent-sentinel vpn enable [location_id]`.
+- **REST API**: `POST /api/vpn/disable`, `POST /api/vpn/enable`, or `POST /api/vpn/toggle`.
+
+### 2. Solo Off-VPN Mode (Exclusive Single Torrent Direct Run)
+When you have a specific torrent (e.g. a rare Linux distro or public release) that needs to run off-VPN:
+1. **Activation**:
+   - In the Web Dashboard, click the **Solo Off-VPN** button on that torrent row (or run `torrent-sentinel off-vpn start <id>`).
+   - A confirmation dialog details the safety actions and allows toggling auto-restore.
+2. **Automatic Isolation**:
+   - All other active torrents in Transmission are **immediately paused** to protect against unencrypted leakage.
+   - The WireGuard VPN tunnel is disconnected.
+   - The selected torrent runs exclusively over your direct host network.
+   - A prominent amber alert banner appears across the dashboard.
+   - Autopilot and automated VPN rotations are safely suppressed while Solo Mode is active.
+3. **Auto-Restore & Fleet Resume**:
+   - When the target download reaches 100% completion, Sentinel pauses it (preventing off-VPN seeding), re-establishes the WireGuard tunnel, and resumes only the torrents that were paused when entering solo mode.
+   - You can also click **"Restore VPN & Resume Fleet"** at any time to return to standard protected operations.
 
 ---
 
@@ -266,6 +295,16 @@ poetry run torrent-sentinel model set llama3.1:8b
 poetry run torrent-sentinel autopilot status
 poetry run torrent-sentinel autopilot mode advisory
 poetry run torrent-sentinel autopilot run --force --mode full
+
+# WireGuard VPN Gateway Controls
+poetry run torrent-sentinel vpn status
+poetry run torrent-sentinel vpn disable
+poetry run torrent-sentinel vpn enable [location_id]
+
+# Solo Off-VPN Mode (Exclusive Single Torrent Direct Run)
+poetry run torrent-sentinel off-vpn status
+poetry run torrent-sentinel off-vpn start <torrent_id_or_hash> [--no-auto-restore]
+poetry run torrent-sentinel off-vpn stop
 ```
 
 ---
@@ -283,6 +322,7 @@ All settings can be configured via environment variables prefixed with `SENTINEL
 | `SENTINEL_TRANSMISSION_WEB_URL` | Custom WebUI URL override for Transmission | `None` (auto-derived) |
 | `SENTINEL_TRANSMISSION_WEB_ENABLED` | Show Transmission WebUI link in dashboard | `true` |
 | `SENTINEL_LAN_NETWORK` | Subnets allowed to bypass VPN for WebUI access | `192.168.0.0/16,10.0.0.0/8,172.16.0.0/12` |
+| `SENTINEL_VPN_ENABLED` | Enable WireGuard VPN Gateway on startup (false = direct traffic) | `true` |
 | `SENTINEL_OLLAMA_ENABLED` | Enable LLM-based diagnostics & Autopilot | `true` |
 | `SENTINEL_OLLAMA_BASE_URL` | URL of your Ollama instance | `http://192.168.0.10:11434` |
 | `SENTINEL_OLLAMA_MODEL` | Default fallback model name | `gemma4:26b` |
