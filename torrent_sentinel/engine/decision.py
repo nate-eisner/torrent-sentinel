@@ -128,6 +128,10 @@ class DecisionEngine:
             return None
 
         if len(available) == 1:
+            if preferred_location:
+                pref = preferred_location.lower().strip()
+                if pref in available[0].id.lower() or pref in available[0].name.lower():
+                    return available[0]
             logger.warning("DecisionEngine: Only one VPN profile exists (%s). Cannot rotate.", available[0].id)
             return None
 
@@ -135,6 +139,10 @@ class DecisionEngine:
         candidate_profiles = [p for p in available if p.id != current_id]
 
         if not candidate_profiles:
+            if preferred_location and current_profile:
+                pref = preferred_location.lower().strip()
+                if pref in current_profile.id.lower() or pref in current_profile.name.lower():
+                    return current_profile
             logger.warning("DecisionEngine: No candidate profiles distinct from current (%s).", current_id)
             return None
 

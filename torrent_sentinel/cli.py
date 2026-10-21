@@ -545,6 +545,105 @@ def vpn_enable_cmd(
 
     asyncio.run(_enable())
 
+@vpn_app.command("locations")
+def vpn_locations_cmd():
+    """List all available WireGuard VPN location profiles with status and metrics."""
+    setup_logging()
+
+    async def _locations():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        available = await adapter.get_available_locations()
+        current = await adapter.get_current_profile()
+        current_id = current.id if current else None
+        scoreboard_rows = await storage.get_scoreboard()
+        scores_map = {r["location_id"]: r for r in scoreboard_rows}
+
+        if not available:
+            console.print(f"[yellow]No WireGuard config profiles found in {settings.VPN_CONFIGS_DIR}[/yellow]")
+            return
+
+        table = Table(title=f"WireGuard VPN Locations ({len(available)} Profiles)")
+        table.add_column("Status", justify="center")
+        table.add_column("Location ID", style="cyan")
+        table.add_column("Location Name", style="bold")
+        table.add_column("Country")
+        table.add_column("Avg Peers", justify="right")
+        table.add_column("Rotations", justify="right")
+
+        for p in available:
+            is_cur = (p.id == current_id)
+            status_text = "[bold green]● ACTIVE[/bold green]" if is_cur else "[dim]○[/dim]"
+            score = scores_map.get(p.id)
+            avg_peers = f"{score['avg_peers']:.1f}" if score and score.get("avg_peers") is not None else "--"
+            success_count = str(score.get("success_count", 0)) if score else "0"
+            table.add_row(
+                status_text,
+                p.id,
+                p.name,
+                getattr(p, "country", "Unknown") or "Unknown",
+                avg_peers,
+                success_count
+            )
+
+        console.print(table)
+
+    asyncio.run(_locations())
+
+@vpn_app.command("switch")
+def vpn_switch_cmd(
+    location: Optional[str] = typer.Argument(None, help="Target VPN location profile ID or name to switch to")
+):
+    """Switch or rotate VPN tunnel to a specific location profile."""
+    setup_logging()
+
+    async def _switch():
+        storage = Storage()
+        await storage.initialize()
+        adapter = get_vpn_adapter()
+        current = await adapter.get_current_profile()
+        available = await adapter.get_available_locations()
+
+        if not available:
+            console.print(f"[bold red]No VPN profiles found in {settings.VPN_CONFIGS_DIR}. Cannot switch.[/bold red]")
+            return
+
+        target = None
+        if location:
+            pref = location.lower().strip()
+            target = next((p for p in available if p.id.lower() == pref or p.name.lower() == pref), None)
+            if not target:
+                target = next((p for p in available if pref in p.id.lower() or pref in p.name.lower()), None)
+            if not target:
+                console.print(f"[bold red]Location '{location}' not found among available profiles.[/bold red]")
+                return
+        else:
+            from torrent_sentinel.clients.transmission import TransmissionClient
+            from torrent_sentinel.clients.ollama import OllamaClient
+            from torrent_sentinel.engine.diagnostics import Diagnostics
+            from torrent_sentinel.engine.decision import DecisionEngine
+
+            transmission = TransmissionClient()
+            ollama = OllamaClient()
+            diag = Diagnostics(transmission, ollama)
+            decision = DecisionEngine(diag, storage, adapter)
+            target = await decision.select_next_profile(current, available)
+
+        if not target:
+            console.print("[yellow]No alternate VPN location candidate available.[/yellow]")
+            return
+
+        console.print(f"[cyan]Switching VPN gateway to:[/cyan] [bold white]{target.name}[/bold white] ({target.id})...")
+        await storage.set_vpn_enabled(True)
+        success = await adapter.rotate_to(target)
+        if success:
+            console.print(f"[bold green]✓ Successfully connected to {target.name} ({target.id})[/bold green]")
+        else:
+            console.print(f"[bold red]✗ Failed to connect to {target.name}[/bold red]")
+
+    asyncio.run(_switch())
+
 off_vpn_app = typer.Typer(help="Manage Solo Off-VPN execution (pause fleet, disconnect VPN, run single torrent)")
 app.add_typer(off_vpn_app, name="off-vpn")
 

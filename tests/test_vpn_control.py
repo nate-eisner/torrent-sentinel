@@ -646,3 +646,62 @@ def test_cli_trackers_command():
         assert "My Test Torrent" in result.output
         assert "BLOCKED" in result.output
         assert "VPN IP Block Detected" in result.output
+
+
+def test_api_locations_and_vpn_switch(client):
+    p1 = make_profile("us-nyc", "US New York")
+    p2 = make_profile("nl-ams", "NL Amsterdam")
+    with patch("torrent_sentinel.api.router.daemon_instance") as mock_daemon:
+        mock_daemon.vpn_adapter.get_available_locations = AsyncMock(return_value=[p1, p2])
+        mock_daemon.vpn_adapter.get_current_profile = AsyncMock(return_value=p1)
+        mock_daemon.decision_engine.execute_rotation = AsyncMock(return_value=True)
+
+        resp = client.get("/api/locations")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert data["current"] == "us-nyc"
+        assert len(data["locations"]) == 2
+        assert data["locations"][0]["id"] == "us-nyc"
+        assert data["locations"][1]["id"] == "nl-ams"
+
+        # Test POST /api/vpn/switch with preferred location
+        resp_switch = client.post("/api/vpn/switch", json={"location": "nl-ams"})
+        assert resp_switch.status_code == 200
+        assert resp_switch.json()["message"] == "Rotation triggered"
+
+
+def test_cli_vpn_locations_and_switch():
+    p1 = make_profile("us-nyc", "US New York")
+    p2 = make_profile("nl-ams", "NL Amsterdam")
+    mock_adapter = AsyncMock()
+    mock_adapter.get_available_locations = AsyncMock(return_value=[p1, p2])
+    mock_adapter.get_current_profile = AsyncMock(return_value=p1)
+    mock_adapter.rotate_to = AsyncMock(return_value=True)
+
+    with patch("torrent_sentinel.cli.get_vpn_adapter", return_value=mock_adapter), \
+         patch("torrent_sentinel.engine.storage.Storage.get_scoreboard", AsyncMock(return_value=[])):
+        res_loc = runner.invoke(cli_app, ["vpn", "locations"])
+        assert res_loc.exit_code == 0
+        assert "WireGuard VPN Locations" in res_loc.output
+        assert "us-nyc" in res_loc.output
+        assert "nl-ams" in res_loc.output
+
+        res_switch = runner.invoke(cli_app, ["vpn", "switch", "nl-ams"])
+        assert res_switch.exit_code == 0
+        assert "Switching VPN gateway to" in res_switch.output
+        assert "NL Amsterdam" in res_switch.output
+
+
+def test_ui_vpn_picker_elements():
+    import os
+    index_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "torrent_sentinel", "api", "static", "index.html"))
+    assert os.path.exists(index_path)
+    with open(index_path, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    assert "vpn-location-select" in html
+    assert "modal-vpn-picker" in html
+    assert "openVpnPickerModal" in html
+    assert "executeVpnLocationAction" in html
+    assert "filterVpnPickerLocations" in html

@@ -99,9 +99,22 @@
                         <span id="rotation-status-text" class="text-[11px] font-semibold text-emerald-400 min-w-[42px]">Active</span>
                     </div>
 
-                    <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20 border border-blue-500/30">
-                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Rotate VPN
-                    </button>
+                    <!-- WireGuard VPN Location Picker & Controls -->
+                    <div class="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1 shadow-sm" title="WireGuard VPN Location Selector">
+                        <div class="flex items-center gap-1.5 pl-2 pr-1 py-1 text-xs text-slate-300">
+                            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-blue-400 shrink-0"></i>
+                            <select id="vpn-location-select" onchange="onVpnLocationSelectChange('header')" class="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[130px] sm:max-w-[170px] truncate" title="Select manual WireGuard VPN location">
+                                <option value="" class="bg-slate-900 text-slate-300">Auto (Next Best)</option>
+                            </select>
+                        </div>
+                        <button id="rotate-btn" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-md shadow-blue-600/20 border border-blue-500/30 shrink-0" title="Rotate or switch VPN location">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="rotate-btn-icon"></i>
+                            <span id="rotate-btn-text">Rotate VPN</span>
+                        </button>
+                        <button onclick="openVpnPickerModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0" title="Browse and select from all WireGuard VPN locations">
+                            <i data-lucide="list-filter" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -125,7 +138,7 @@
                 <div id="stat-stalled-sub" class="text-xs text-slate-400 mt-1">0 stalled</div>
             </div>
 
-            <div class="bg-slate-900/80 backdrop-blur p-5 rounded-2xl border border-slate-800 shadow-xl">
+            <div class="bg-slate-900/80 backdrop-blur p-5 rounded-2xl border border-slate-800 shadow-xl group hover:border-slate-700/80 transition-all">
                 <div class="flex justify-between items-center text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">
                     <span>Active VPN Location</span>
                     <div class="flex items-center gap-2">
@@ -133,7 +146,12 @@
                         <i data-lucide="globe" class="w-4 h-4 text-emerald-400"></i>
                     </div>
                 </div>
-                <div id="stat-location" class="text-2xl font-bold text-emerald-400 truncate">--</div>
+                <div class="flex items-baseline justify-between gap-2">
+                    <div id="stat-location" class="text-2xl font-bold text-emerald-400 truncate">--</div>
+                    <button onclick="openVpnPickerModal()" class="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors px-2 py-1 rounded-lg hover:bg-slate-800 shrink-0" title="Manually choose WireGuard VPN location">
+                        <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Change
+                    </button>
+                </div>
                 <div id="stat-rot-time" class="text-xs text-slate-400 mt-1">Ready</div>
             </div>
 
@@ -373,6 +391,28 @@
                             <span id="vpn-pane-toggle-text">Pause</span>
                         </button>
                     </div>
+
+                    <!-- Manual Location Quick Switcher inside VPN Tab -->
+                    <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-white flex items-center gap-1.5">
+                                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-blue-400"></i>
+                                Manual Location Picker
+                            </span>
+                            <button onclick="openVpnPickerModal()" class="text-[11px] text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
+                                Browse all <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="vpn-pane-location-select" onchange="onVpnLocationSelectChange('pane')" class="flex-1 bg-slate-900 border border-slate-800 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 truncate">
+                                <option value="">Auto (Next Best)</option>
+                            </select>
+                            <button id="vpn-pane-switch-btn" onclick="executeVpnLocationAction('pane')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shrink-0">
+                                Switch
+                            </button>
+                        </div>
+                    </div>
+
                     <div id="vpn-history-list" class="space-y-3">
                         <div class="text-center text-xs text-slate-500 py-8">Loading rotation history...</div>
                     </div>
@@ -708,6 +748,55 @@
         </div>
     </div>
 
+    <!-- VPN Location Picker Modal -->
+    <div id="modal-vpn-picker" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        <i data-lucide="globe" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>WireGuard VPN Locations</span>
+                            <span id="vpn-picker-count-badge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-blue-400 font-mono">0 Available</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400">Select which WireGuard VPN tunnel profile to route torrent swarm traffic through.</p>
+                    </div>
+                </div>
+                <button onclick="closeVpnPickerModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Search & Quick Filter Bar -->
+            <div class="p-4 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                    <input type="text" id="vpn-picker-search" oninput="filterVpnPickerLocations()" placeholder="Search locations by country, city, or ID..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                </div>
+                <button onclick="triggerAutoRotationFromPicker()" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 flex items-center justify-center gap-1.5 transition-all shrink-0 active:scale-95" title="Let Sentinel select next best performing profile automatically">
+                    <i data-lucide="shuffle" class="w-3.5 h-3.5 text-emerald-400"></i>
+                    <span>Auto-Rotate (Next Best)</span>
+                </button>
+            </div>
+
+            <!-- Locations List -->
+            <div id="vpn-picker-list" class="p-4 overflow-y-auto flex-1 min-h-[200px] max-h-[420px] space-y-2.5">
+                <div class="text-center py-8 text-slate-500 text-xs">Loading available locations...</div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-3 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400">
+                <span id="vpn-picker-active-info">Current: <strong class="text-emerald-400">--</strong></span>
+                <button onclick="closeVpnPickerModal()" class="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // State variables
@@ -722,6 +811,302 @@
         let isGlobalOffVpnMode = false;
         let currentTargetTorrentId = null;
         let currentTargetTorrentName = '';
+        let cachedLocations = [];
+        let currentVpnLocationId = null;
+        let currentVpnLocationName = null;
+
+        function getCountryCode(loc) {
+            if (loc && loc.country && loc.country !== 'Unknown') {
+                return loc.country.toUpperCase();
+            }
+            const match = (loc && loc.id ? loc.id : '').match(/^([a-zA-Z]{2})[-_]/);
+            if (match) {
+                return match[1].toUpperCase();
+            }
+            return '';
+        }
+
+        function getCountryFlag(countryCode) {
+            if (!countryCode || countryCode.length !== 2) return '🌐';
+            const code = countryCode.toUpperCase();
+            try {
+                const codePoints = [...code].map(c => 127397 + c.charCodeAt(0));
+                return String.fromCodePoint(...codePoints);
+            } catch (_) {
+                return '🌐';
+            }
+        }
+
+        function updateLocationsUI(locData, activeName) {
+            if (!locData || !locData.locations) return;
+            cachedLocations = locData.locations || [];
+            currentVpnLocationId = locData.current || null;
+            if (activeName) currentVpnLocationName = activeName;
+
+            const headerSelect = document.getElementById('vpn-location-select');
+            const paneSelect = document.getElementById('vpn-pane-location-select');
+
+            const prevHeaderVal = headerSelect ? headerSelect.value : '';
+            const prevPaneVal = paneSelect ? paneSelect.value : '';
+
+            const optionsHtml = [
+                '<option value="" class="bg-slate-900 text-slate-300">⚡ Auto (Next Best)</option>',
+                ...cachedLocations.map(loc => {
+                    const cCode = getCountryCode(loc);
+                    const flag = getCountryFlag(cCode);
+                    const isCur = loc.is_current || (currentVpnLocationId && loc.id === currentVpnLocationId);
+                    const label = `${flag} ${loc.name}${isCur ? ' (Active)' : ''}`;
+                    return `<option value="${loc.id}" class="bg-slate-900 ${isCur ? 'text-emerald-400 font-semibold' : 'text-slate-200'}">${label}</option>`;
+                })
+            ].join('');
+
+            if (headerSelect) {
+                headerSelect.innerHTML = optionsHtml;
+                if (prevHeaderVal && cachedLocations.some(l => l.id === prevHeaderVal)) {
+                    headerSelect.value = prevHeaderVal;
+                } else if (currentVpnLocationId) {
+                    headerSelect.value = currentVpnLocationId;
+                } else {
+                    headerSelect.value = '';
+                }
+            }
+
+            if (paneSelect) {
+                paneSelect.innerHTML = optionsHtml;
+                if (prevPaneVal && cachedLocations.some(l => l.id === prevPaneVal)) {
+                    paneSelect.value = prevPaneVal;
+                } else if (currentVpnLocationId) {
+                    paneSelect.value = currentVpnLocationId;
+                } else {
+                    paneSelect.value = '';
+                }
+            }
+
+            updateRotateButtonLabel();
+
+            const countBadge = document.getElementById('vpn-picker-count-badge');
+            if (countBadge) countBadge.innerText = `${cachedLocations.length} Available`;
+
+            const activeInfo = document.getElementById('vpn-picker-active-info');
+            if (activeInfo) {
+                const activeLoc = cachedLocations.find(l => l.id === currentVpnLocationId);
+                const activeText = activeLoc ? activeLoc.name : (currentVpnLocationName || 'None');
+                activeInfo.innerHTML = `Current: <strong class="text-emerald-400">${activeText}</strong>`;
+            }
+        }
+
+        function onVpnLocationSelectChange(source) {
+            const headerSelect = document.getElementById('vpn-location-select');
+            const paneSelect = document.getElementById('vpn-pane-location-select');
+
+            const selectedVal = (source === 'pane' && paneSelect) ? paneSelect.value : (headerSelect ? headerSelect.value : '');
+
+            if (source === 'pane' && headerSelect) {
+                headerSelect.value = selectedVal;
+            } else if (source === 'header' && paneSelect) {
+                paneSelect.value = selectedVal;
+            }
+
+            updateRotateButtonLabel();
+        }
+
+        function updateRotateButtonLabel() {
+            const headerSelect = document.getElementById('vpn-location-select');
+            const rotateBtnText = document.getElementById('rotate-btn-text');
+            const rotateBtn = document.getElementById('rotate-btn');
+            const paneBtn = document.getElementById('vpn-pane-switch-btn');
+
+            if (!headerSelect || !rotateBtnText) return;
+
+            const selectedVal = headerSelect.value;
+            if (!selectedVal) {
+                rotateBtnText.innerText = 'Rotate VPN';
+                if (rotateBtn) {
+                    rotateBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'border-emerald-500/40');
+                    rotateBtn.classList.add('bg-blue-600', 'hover:bg-blue-500', 'border-blue-500/30');
+                }
+                if (paneBtn) paneBtn.innerText = 'Rotate';
+            } else if (selectedVal === currentVpnLocationId) {
+                rotateBtnText.innerText = 'Reconnect';
+                if (rotateBtn) {
+                    rotateBtn.classList.remove('bg-blue-600', 'hover:bg-blue-500', 'border-blue-500/30');
+                    rotateBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'border-emerald-500/40');
+                }
+                if (paneBtn) paneBtn.innerText = 'Reconnect';
+            } else {
+                rotateBtnText.innerText = 'Switch Location';
+                if (rotateBtn) {
+                    rotateBtn.classList.remove('bg-blue-600', 'hover:bg-blue-500', 'border-blue-500/30');
+                    rotateBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'border-emerald-500/40');
+                }
+                if (paneBtn) paneBtn.innerText = 'Switch';
+            }
+        }
+
+        async function executeVpnLocationAction(source) {
+            const headerSelect = document.getElementById('vpn-location-select');
+            const paneSelect = document.getElementById('vpn-pane-location-select');
+            const selectedLocId = (source === 'pane' && paneSelect) ? paneSelect.value : (headerSelect ? headerSelect.value : '');
+
+            const rotBtn = document.getElementById('rotate-btn');
+            const paneBtn = document.getElementById('vpn-pane-switch-btn');
+            const rotIcon = document.getElementById('rotate-btn-icon');
+
+            if (rotBtn) {
+                rotBtn.disabled = true;
+                rotBtn.classList.add('opacity-50');
+            }
+            if (paneBtn) paneBtn.disabled = true;
+            if (rotIcon) rotIcon.classList.add('animate-spin');
+
+            const targetLoc = cachedLocations.find(l => l.id === selectedLocId);
+            const targetName = targetLoc ? targetLoc.name : selectedLocId;
+
+            try {
+                const body = selectedLocId ? JSON.stringify({ location: selectedLocId }) : JSON.stringify({});
+                const res = await fetch('/api/rotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body
+                });
+
+                if (res.ok) {
+                    if (selectedLocId) {
+                        showToast(`🔄 WireGuard VPN switching to ${targetName}...`);
+                    } else {
+                        showToast('🔄 WireGuard VPN rotation triggered!');
+                    }
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.detail || 'Failed to trigger VPN switch.', true);
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, true);
+            } finally {
+                setTimeout(async () => {
+                    if (rotBtn) {
+                        rotBtn.disabled = false;
+                        rotBtn.classList.remove('opacity-50');
+                    }
+                    if (paneBtn) paneBtn.disabled = false;
+                    if (rotIcon) rotIcon.classList.remove('animate-spin');
+                    await updateStatus();
+                }, 2000);
+            }
+        }
+
+        function openVpnPickerModal() {
+            const modal = document.getElementById('modal-vpn-picker');
+            if (!modal) return;
+            const searchInput = document.getElementById('vpn-picker-search');
+            if (searchInput) searchInput.value = '';
+            renderVpnPickerList(cachedLocations);
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                if (searchInput) searchInput.focus();
+            }, 10);
+            lucide.createIcons();
+        }
+
+        function closeVpnPickerModal() {
+            const modal = document.getElementById('modal-vpn-picker');
+            if (!modal) return;
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        function filterVpnPickerLocations() {
+            const query = (document.getElementById('vpn-picker-search')?.value || '').toLowerCase().trim();
+            if (!query) {
+                renderVpnPickerList(cachedLocations);
+                return;
+            }
+            const filtered = cachedLocations.filter(loc =>
+                loc.name.toLowerCase().includes(query) ||
+                loc.id.toLowerCase().includes(query) ||
+                (loc.country && loc.country.toLowerCase().includes(query))
+            );
+            renderVpnPickerList(filtered);
+        }
+
+        function renderVpnPickerList(locations) {
+            const listEl = document.getElementById('vpn-picker-list');
+            if (!listEl) return;
+
+            if (!locations || locations.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-12 text-slate-500 text-xs">
+                        <i data-lucide="globe" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                        No VPN locations found matching your search.
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            listEl.innerHTML = locations.map(loc => {
+                const cCode = getCountryCode(loc);
+                const flag = getCountryFlag(cCode);
+                const isCur = loc.is_current || (currentVpnLocationId && loc.id === currentVpnLocationId);
+                const avgPeersStr = loc.avg_peers != null ? `${Number(loc.avg_peers).toFixed(1)} avg peers` : null;
+                const successStr = loc.success_count > 0 ? `${loc.success_count} rotations` : null;
+
+                return `
+                    <div class="p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${isCur ? 'bg-emerald-950/30 border-emerald-500/50 shadow-sm' : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'}">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-lg ${isCur ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-slate-800/80 border border-slate-700'} shrink-0">
+                                ${flag}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-xs font-bold text-white truncate">${loc.name}</span>
+                                    ${isCur ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">Active</span>' : ''}
+                                </div>
+                                <div class="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                                    <span class="font-mono text-slate-500 text-[10px] bg-black/30 px-1 rounded">${loc.id}</span>
+                                    ${avgPeersStr ? `<span class="flex items-center gap-1 text-blue-400"><i data-lucide="users" class="w-3 h-3"></i> ${avgPeersStr}</span>` : ''}
+                                    ${successStr ? `<span class="flex items-center gap-1 text-emerald-400"><i data-lucide="check-circle" class="w-3 h-3"></i> ${successStr}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="shrink-0">
+                            ${isCur ? `
+                                <button onclick="selectVpnLocation('${loc.id}', '${loc.name.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-900/40 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-800/60 transition-all flex items-center gap-1.5 active:scale-95 shadow-sm">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Reconnect
+                                </button>
+                            ` : `
+                                <button onclick="selectVpnLocation('${loc.id}', '${loc.name.replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-md shadow-blue-600/20 border border-blue-500/30 flex items-center gap-1.5 active:scale-95">
+                                    <i data-lucide="shield-check" class="w-3 h-3"></i> Select
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        async function selectVpnLocation(locId, locName) {
+            closeVpnPickerModal();
+            const headerSelect = document.getElementById('vpn-location-select');
+            const paneSelect = document.getElementById('vpn-pane-location-select');
+            if (headerSelect) headerSelect.value = locId;
+            if (paneSelect) paneSelect.value = locId;
+            updateRotateButtonLabel();
+            await executeVpnLocationAction('header');
+        }
+
+        async function triggerAutoRotationFromPicker() {
+            closeVpnPickerModal();
+            const headerSelect = document.getElementById('vpn-location-select');
+            const paneSelect = document.getElementById('vpn-pane-location-select');
+            if (headerSelect) headerSelect.value = '';
+            if (paneSelect) paneSelect.value = '';
+            updateRotateButtonLabel();
+            await executeVpnLocationAction('header');
+        }
 
         function resolveWebUrl(rawUrl) {
             if (!rawUrl) return '#';
@@ -1326,15 +1711,24 @@
 
                 // Rotate VPN Header Button Guard
                 const rotBtn = document.getElementById('rotate-btn');
+                const vpnLocSelect = document.getElementById('vpn-location-select');
                 if (rotBtn) {
                     if (!status.vpn_enabled || status.off_vpn_mode) {
                         rotBtn.disabled = true;
                         rotBtn.classList.add('opacity-50', 'cursor-not-allowed');
                         rotBtn.title = status.off_vpn_mode ? 'VPN rotation is paused while Solo Off-VPN is active' : 'WireGuard VPN is disabled';
+                        if (vpnLocSelect) {
+                            vpnLocSelect.disabled = true;
+                            vpnLocSelect.classList.add('opacity-50', 'cursor-not-allowed');
+                        }
                     } else {
                         rotBtn.disabled = false;
                         rotBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                        rotBtn.title = 'Rotate VPN';
+                        rotBtn.title = 'Rotate or switch VPN location';
+                        if (vpnLocSelect) {
+                            vpnLocSelect.disabled = false;
+                            vpnLocSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+                        }
                     }
                 }
 
@@ -1457,20 +1851,23 @@
                     if (paneBtnText) paneBtnText.innerText = 'Resume';
                 }
 
+                let rotTextStatus = isRotEnabled
+                    ? (status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready')
+                    : 'Auto-rotation Paused';
                 if (!status.off_vpn_mode && status.vpn_enabled) {
-                    let rotTextStatus = isRotEnabled
-                        ? (status.last_rotation ? `Rotated: ${new Date(status.last_rotation).toLocaleTimeString()}` : 'Ready')
-                        : 'Auto-rotation Paused';
                     document.getElementById('stat-rot-time').innerText = rotTextStatus;
-                    try {
-                        const locRes = await fetch('/api/locations');
-                        if (locRes.ok) {
-                            const locData = await locRes.json();
+                }
+                try {
+                    const locRes = await fetch('/api/locations');
+                    if (locRes.ok) {
+                        const locData = await locRes.json();
+                        if (!status.off_vpn_mode && status.vpn_enabled) {
                             const statusSuffix = isRotEnabled ? rotTextStatus : 'Paused';
                             document.getElementById('stat-rot-time').innerText = `${locData.total} configs loaded • ${statusSuffix}`;
                         }
-                    } catch (_) {}
-                }
+                        updateLocationsUI(locData, status.current_location);
+                    }
+                } catch (_) {}
 
                 // 2. Torrents Queue
                 const torrentRes = await fetch('/api/torrents');
@@ -2159,26 +2556,7 @@
 
         // Rotate VPN button
         document.getElementById('rotate-btn').addEventListener('click', async () => {
-            const btn = document.getElementById('rotate-btn');
-            btn.disabled = true;
-            btn.classList.add('opacity-50');
-
-            try {
-                const res = await fetch('/api/rotate', { method: 'POST' });
-                if (res.ok) {
-                    showToast('🔄 WireGuard VPN rotation triggered!');
-                } else {
-                    const err = await res.json().catch(() => ({}));
-                    showToast(err.detail || 'Failed to trigger rotation.', true);
-                }
-            } catch (err) {
-                showToast('Error: ' + err.message, true);
-            } finally {
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.classList.remove('opacity-50');
-                }, 3000);
-            }
+            await executeVpnLocationAction('header');
         });
 
         // Refresh & Probe Trackers
@@ -2256,6 +2634,10 @@
                 const trModal = document.getElementById('modal-trackers');
                 if (trModal && !trModal.classList.contains('hidden')) {
                     closeTrackersModal();
+                }
+                const vpnModal = document.getElementById('modal-vpn-picker');
+                if (vpnModal && !vpnModal.classList.contains('hidden')) {
+                    closeVpnPickerModal();
                 }
             }
         });

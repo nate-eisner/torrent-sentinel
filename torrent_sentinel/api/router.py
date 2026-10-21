@@ -941,10 +941,11 @@ async def get_scoreboard():
 async def get_locations():
     locations = []
     current_id = None
-    if daemon_instance and daemon_instance.vpn_adapter:
+    adapter = daemon_instance.vpn_adapter if (daemon_instance and daemon_instance.vpn_adapter) else get_vpn_adapter()
+    if adapter:
         try:
-            available = await daemon_instance.vpn_adapter.get_available_locations()
-            current = await daemon_instance.vpn_adapter.get_current_profile()
+            available = await adapter.get_available_locations()
+            current = await adapter.get_current_profile()
             current_id = current.id if current else None
             scoreboard_rows = await storage.get_scoreboard()
             scores_map = {r["location_id"]: r for r in scoreboard_rows}
@@ -952,6 +953,8 @@ async def get_locations():
                 {
                     "id": p.id,
                     "name": p.name,
+                    "country": getattr(p, "country", "Unknown") or "Unknown",
+                    "endpoint": getattr(p, "endpoint", "") or "",
                     "is_current": (p.id == current_id),
                     "avg_peers": scores_map[p.id]["avg_peers"] if p.id in scores_map else None,
                     "success_count": scores_map[p.id]["success_count"] if p.id in scores_map else 0
@@ -981,19 +984,38 @@ async def trigger_rotation(background_tasks: BackgroundTasks, request: Optional[
         adapter = daemon_instance.vpn_adapter
         current_profile = await adapter.get_current_profile()
         available = await adapter.get_available_locations()
-        target = await daemon_instance.decision_engine.select_next_profile(
-            current_profile=current_profile,
-            available=available,
-            preferred_location=pref_loc
-        )
+        target = None
+        if pref_loc and available:
+            pref = pref_loc.lower().strip()
+            target = next(
+                (p for p in available if p.id.lower() == pref or p.name.lower() == pref),
+                None
+            )
+            if not target:
+                target = next(
+                    (p for p in available if pref in p.id.lower() or pref in p.name.lower()),
+                    None
+                )
+        if not target:
+            target = await daemon_instance.decision_engine.select_next_profile(
+                current_profile=current_profile,
+                available=available,
+                preferred_location=pref_loc
+            )
         if target:
             logger.info("API Trigger: executing rotation to '%s' (%s)...", target.name, target.id)
-            await daemon_instance.decision_engine.execute_rotation(current_profile, target, "Manual Web Dashboard Trigger")
+            await storage.set_vpn_enabled(True)
+            reason = f"Manual Location Select ({target.name})" if pref_loc else "Manual Web Dashboard Trigger"
+            await daemon_instance.decision_engine.execute_rotation(current_profile, target, reason)
         else:
             logger.warning("API Trigger: No alternate location available to rotate to.")
 
     background_tasks.add_task(run_rotation, preferred)
-    return {"message": "Rotation triggered"}
+    return {"message": "Rotation triggered", "status": "success", "location": preferred}
+
+@app.post("/api/vpn/switch")
+async def switch_vpn_endpoint(background_tasks: BackgroundTasks, request: Optional[RotateRequest] = None):
+    return await trigger_rotation(background_tasks, request)
 
 @app.get("/api/autopilot/status")
 async def get_autopilot_status():
